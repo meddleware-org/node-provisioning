@@ -177,6 +177,7 @@ required, `apt.fallback` is a site key defaulting to `abort`, the comment is cor
 `03-crio.sh` and `04-kubetools.sh` download a repository key over HTTPS and install it into a signed-by keyring. A changed
 key would be trusted. Pinning requires fingerprints obtained from a source independent of the download; writing a value
 read from the same download would be trust-on-first-use presented as a pin. See OQ2.
+**Observed 2026-10-22 (candidates only, NOT verified out of band):** the CRI-O repository key `85B67D5C50100B1AC8CEFE49CBA9C85640A2B579` (created 2025-02-11, expires 2027-04-22) and the Kubernetes repository key `DE15B14486CD377B9E876E1A234654DA9A296436` (created 2022-08-25, **expires 2026-12-29**). Both scripts install a key only when none exists, so a key that is rotated or expires later is never refreshed on an existing node (`apt-get update` would then fail with an expired-key error): a rebuilt node fetches the current key, and the pin must be updated whenever the project rotates it.
 
 ### F16 — Images were not reproducible
 
