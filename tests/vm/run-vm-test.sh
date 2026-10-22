@@ -186,7 +186,7 @@ s_reinstall() { # install, create data on the data disk with node-setup 00, rein
   boot_installed || { result reinstall_vm_boots 1; return 1; }
   rm -rf "${W}/np-tree"; mkdir -p "${W}/np-tree"; git -C "${ROOT}" archive --format=tar HEAD | tar -x -C "${W}/np-tree"
   tar -C "${W}/np-tree" -czf "${W}/np.tgz" .
-  scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" nodenodeadmin@127.0.0.1:/tmp/np.tgz
+  scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" nodeadmin@127.0.0.1:/tmp/np.tgz
   vmssh 'rm -rf /tmp/np && mkdir /tmp/np && tar -xzf /tmp/np.tgz -C /tmp/np'
   vmssh "sudo DATA_DISK_SERIAL='${DATA_ID}' ETCD_SIZE=1G LONGHORN_SIZE=2G bash /tmp/np/targets/ubuntu-server-26.04/node-setup/00-data-disk.sh" >"${W}/data-disk-1.txt" 2>&1; result node_setup_00_first_run $?
   vmssh 'findmnt -n /var/lib/persistent && findmnt -n /var/lib/etcd'; result data_partitions_mounted $?
@@ -200,7 +200,7 @@ s_reinstall() { # install, create data on the data disk with node-setup 00, rein
   run_installer "${W}/seed/nocloud-seed.iso" "${W}/reinstall-serial.log" "An error occurred. Press enter to start a shell"
   ok_if data_disk_identical_after_os_reinstall disk_unchanged "${W}/data.qcow2"
   boot_installed || { result reinstall_vm_boots 1; return 1; }
-  scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" nodenodeadmin@127.0.0.1:/tmp/np.tgz
+  scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" nodeadmin@127.0.0.1:/tmp/np.tgz
   vmssh 'rm -rf /tmp/np && mkdir /tmp/np && tar -xzf /tmp/np.tgz -C /tmp/np'
   vmssh "sudo DATA_DISK_SERIAL='${DATA_ID}' bash /tmp/np/targets/ubuntu-server-26.04/node-setup/00-data-disk.sh" >"${W}/data-disk-2.txt" 2>&1; result node_setup_00_after_reinstall $?
   grep -q "Layout already present" "${W}/data-disk-2.txt"; result reinstall_recognises_the_layout_no_repartition $?
