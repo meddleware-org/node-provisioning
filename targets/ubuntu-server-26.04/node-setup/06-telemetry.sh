@@ -70,31 +70,29 @@ else
 fi
 
 # ── /etc/hosts telemetry block (belt-and-suspenders) ─────────────────────────
-# Network-level fallback for components that have their own opt-out settings
-# but may still attempt outbound connections before config is applied, or if
-# a future update re-enables them by default.
-#   stats.grafana.com       — Grafana analytics (grafana.ini reporting_enabled: false)
-#   analytics.longhornio.com — Longhorn phone-home (allowCollectingLonghornUsageMetrics: false)
-#   usage.juicefs.com       — JuiceFS client stats (StorageClass --no-usage-report)
-#   sentry.io / o1368324.* — Ory SQA crash reporting (sqa.opt_out: true in all Ory configs)
-# Idempotent: only adds the block if the marker is not already present.
+# Network-level fallback for components that have their own opt-out settings but may still attempt
+# outbound connections before the opt-out is applied, or if an update re-enables them by default.
+# The Ubuntu hosts below are built in; anything specific to the services you run (analytics and crash-report
+# endpoints of third-party software) comes from TELEMETRY_HOSTS_EXTRA (comma-separated host names).
+# Idempotent and MERGING: each missing entry is added individually, so entries the installer already wrote
+# neither suppress nor duplicate the rest.
 HOSTS_MARKER="# Telemetry / analytics endpoint blocks"
-if ! grep -qF "${HOSTS_MARKER}" /etc/hosts; then
-  cat >> /etc/hosts <<'TELEMETRY_BLOCK'
-
-# Telemetry / analytics endpoint blocks (added by 06-telemetry.sh)
-127.0.0.1 motd.ubuntu.com
-127.0.0.1 metrics.ubuntu.com
-127.0.0.1 report.ubuntu.com
-127.0.0.1 stats.grafana.com
-127.0.0.1 analytics.longhornio.com
-127.0.0.1 usage.juicefs.com
-127.0.0.1 sentry.io
-127.0.0.1 o1368324.ingest.sentry.io
-TELEMETRY_BLOCK
-  ok "/etc/hosts: telemetry domains blocked"
-else
-  ok "/etc/hosts: telemetry block already present (added by autoinstall)"
-fi
+DEFAULT_HOSTS="motd.ubuntu.com metrics.ubuntu.com report.ubuntu.com"
+EXTRA_HOSTS="${TELEMETRY_HOSTS_EXTRA:-}"
+EXTRA_HOSTS="${EXTRA_HOSTS//,/ }"
+added=0
+for host in ${DEFAULT_HOSTS} ${EXTRA_HOSTS}; do
+  [[ "${host}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { echo "  [FAIL] invalid host name in TELEMETRY_HOSTS_EXTRA" >&2; exit 1; }
+done
+for host in ${DEFAULT_HOSTS} ${EXTRA_HOSTS}; do
+  if ! grep -qE "^127\.0\.0\.1[[:space:]]+${host//./\\.}([[:space:]]|\$)" /etc/hosts; then
+    if (( added == 0 )) && ! grep -qF "${HOSTS_MARKER}" /etc/hosts; then
+      printf '\n%s (added by node-provisioning)\n' "${HOSTS_MARKER}" >> /etc/hosts
+    fi
+    echo "127.0.0.1 ${host}" >> /etc/hosts
+    added=$((added + 1))
+  fi
+done
+ok "/etc/hosts: telemetry domains blocked (${added} entries added)"
 
 echo "==> OS telemetry hardening complete"

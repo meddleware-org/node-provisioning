@@ -210,9 +210,6 @@ autoinstall:
       127.0.0.1 motd.ubuntu.com
       127.0.0.1 metrics.ubuntu.com
       127.0.0.1 report.ubuntu.com
-      127.0.0.1 stats.grafana.com
-      127.0.0.1 analytics.longhornio.com
-      127.0.0.1 usage.juicefs.com
       TELEMETRY_BLOCK
     # Apply netplan configuration (network bonding + VLANs + static IP).
     # This runs during autoinstall (late-commands), so networking is ready on first boot.

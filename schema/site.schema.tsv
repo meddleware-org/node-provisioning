@@ -26,6 +26,7 @@ ETCD_SIZE	size	no	50G	no	etcd partition on the data disk.
 LONGHORN_SIZE	size	no	150G	no	Longhorn fast-tier partition.
 REGISTRY_UID	int	no	1000	no	Owner uid of the persistent registry directory.
 REGISTRY_GID	int	no	1000	no	Owner gid of the persistent registry directory.
+TELEMETRY_HOSTS_EXTRA	list:host	no	-	no	Extra host names blocked in /etc/hosts (analytics and crash-report endpoints of software you run). The Ubuntu hosts are built in.
 ## hardening
 SSH_ALLOW_TCP_FORWARDING	bool	no	false	no	Allow ssh -L / -R port forwarding.
 ## ubuntu pro
