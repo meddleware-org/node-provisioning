@@ -91,7 +91,11 @@ boot_installed() { # background; waits for ssh
   rm -f "${W}/qemu.pid"
   "${QEMU[@]}" -serial "file:${W}/boot-serial.log" -daemonize -pidfile "${W}/qemu.pid" >/dev/null 2>&1 || return 1
   local i
-  for i in $(seq 1 90); do vmssh true >/dev/null 2>&1 && return 0; sleep 5; done
+  for i in $(seq 1 90); do vmssh true >/dev/null 2>&1 && break; sleep 5; done
+  vmssh true >/dev/null 2>&1 || return 1
+  # right after an install sshd can accept a connection and then restart (first-boot configuration): wait until boot is done
+  vmssh 'sudo timeout 300 systemctl is-system-running --wait' >/dev/null 2>&1 || true
+  for i in $(seq 1 12); do vmssh true >/dev/null 2>&1 && return 0; sleep 5; done
   return 1
 }
 vmssh() { ssh -i "${W}/key" -p "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes -o LogLevel=ERROR nodeadmin@127.0.0.1 "$@"; }
