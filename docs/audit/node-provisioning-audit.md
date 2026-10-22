@@ -130,7 +130,7 @@ The template held a password hash, an SSH key with an identifying comment, a hos
 private site directory; the public repository carries only fixtures and documentation addresses. `scripts/check-public-hygiene.sh`
 fails on non-documentation IPv4 addresses, crypt hashes, SSH public keys and token shapes, and on any term of a denylist
 derived from the site (reporting file and line, never the value). Test samples are built at run time so no secret-shaped
-literal exists in the source. **Evidence:** `tests/hygiene.test.sh` (21 cases). A password hash that was read into an
+literal exists in the source. `scripts/scan-history.sh` runs the same scan over every commit, because history keeps removed values: on 2026-10-22 it found a real hardware identifier in a test sample of the first local commit (replaced before it was ever pushed, and history rewritten while the repository was still local). **Evidence:** `tests/hygiene.test.sh` (21 cases). A password hash that was read into an
 assistant session during the extraction is treated as exposed: a new password is required (OQ1).
 
 ### F10 — A firewall script failure left the node open
@@ -351,3 +351,6 @@ installer's storage handling are proved only by the VM matrix.
   listed; the old flow's rendering and node-script behaviour were compared with the new tool's (render: identical after
   stripping comment and blank lines, meta-data byte-identical; scripts 02–07: identical command logs and filesystem effects,
   differing only in the intended changes). VM matrix and hardware run pending.
+- 2026-10-22 — history scan (`scripts/scan-history.sh`) with the site's own values as the denylist found one real hardware identifier in a
+  test sample of the first local commit; it was replaced in all commits (history rewritten before any push) and the scan now reports a clean
+  history. The scan is part of the pre-publication checklist.

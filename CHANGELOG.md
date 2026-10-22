@@ -15,7 +15,7 @@ First version, extracted from the platform workspace's in-tree OS tooling. Set t
   fragments), validated against the pinned Subiquity 26.04.1 autoinstall schema, `cloud-init schema` and `netplan generate`;
   images in three formats (ISO, 4 MiB VFAT, 1.44 MB FAT12 for a BMC virtual floppy).
 - Node-setup scripts 00–08 and a runner (`run.sh`) with fixed order and failure semantics; new `08-hardening.sh`.
-- Public-hygiene scan (`scripts/check-public-hygiene.sh`) with a site-derived denylist; release workflow (deterministic
+- Public-hygiene scan (`scripts/check-public-hygiene.sh`) with a site-derived denylist, a history scanner (`scripts/scan-history.sh`) and a pre-commit hook; release workflow (deterministic
   `git archive` tarball, keyless cosign bundle, GitHub attestation, GitHub Release and OCI publish); a manual QEMU/KVM VM test
   matrix (`tests/vm/`).
 
