@@ -111,7 +111,7 @@ autoinstall:
 
   identity:
     hostname: node1
-    username: admin
+    username: nodeadmin
     # Generate: python3 -c "import crypt; print(crypt.crypt('PASSWORD', crypt.mksalt(crypt.METHOD_SHA512)))"
     # or:       echo 'PASSWORD' | mkpasswd --method=SHA-512 --stdin
     password: "$6$fixturesalt0000$lQtobrhkLdq12cYEDI2CkGby5YM.eAWLLztyfmoxn.aSaNljhNhsq3eEDBL/TlEOMTNZWWULcpmF05JPLiIF5/"
@@ -185,7 +185,7 @@ autoinstall:
     # silently producing a node without its network configuration. Single-line commands that are allowed to
     # fail say so explicitly with `|| true`.
     # Lock down sudo — passwordless for the administrator.
-    - "mkdir -p /target/etc/sudoers.d && echo 'admin ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/admin && chmod 440 /target/etc/sudoers.d/admin"
+    - "mkdir -p /target/etc/sudoers.d && echo 'nodeadmin ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/nodeadmin && chmod 440 /target/etc/sudoers.d/nodeadmin"
     # kubeadm expects /var/lib/etcd owned by root with mode 700
     - "test -d /target/var/lib/etcd && chmod 700 /target/var/lib/etcd || true"
     # Belt and braces: remove any swap entry from /etc/fstab (none is expected)

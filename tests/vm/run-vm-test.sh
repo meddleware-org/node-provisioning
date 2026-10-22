@@ -70,11 +70,19 @@ qemu_base() {
     -drive "if=none,id=hdd,file=${W}/hdd.img,format=raw" -device "virtio-blk-pci,drive=hdd,serial=${HDD_SERIAL}"
     -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22")
 }
-run_installer() { # <seed-iso> <serial-log> ; returns when the installer stops or reboots (-no-reboot)
+run_installer() { # <seed-iso> <serial-log> [stop-regex]: returns when the installer stops, reboots (-no-reboot) or the pattern shows
   qemu_base
+  local stop="${3:-}" pid
+  : >"$2"
   timeout "${VM_INSTALL_TIMEOUT:-3000}" "${QEMU[@]}" -no-reboot -serial "file:$2" \
     -drive "file=${ISO},media=cdrom,readonly=on,id=iso" -drive "file=$1,media=cdrom,readonly=on,id=seed" \
-    -kernel "${W}/vmlinuz" -initrd "${W}/initrd" -append "autoinstall ds=nocloud console=ttyS0 ---" >/dev/null 2>&1
+    -kernel "${W}/vmlinuz" -initrd "${W}/initrd" -append "autoinstall ds=nocloud console=ttyS0 ---" >/dev/null 2>&1 &
+  pid=$!
+  while kill -0 "${pid}" 2>/dev/null; do
+    if [[ -n "${stop}" ]] && grep -a -q -E "${stop}" "$2"; then sleep 5; kill "${pid}" 2>/dev/null; break; fi
+    sleep 5
+  done
+  wait "${pid}" 2>/dev/null || true
 }
 boot_installed() { # background; waits for ssh
   qemu_base
@@ -84,7 +92,7 @@ boot_installed() { # background; waits for ssh
   for i in $(seq 1 90); do vmssh true >/dev/null 2>&1 && return 0; sleep 5; done
   return 1
 }
-vmssh() { ssh -i "${W}/key" -p "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes -o LogLevel=ERROR admin@127.0.0.1 "$@"; }
+vmssh() { ssh -i "${W}/key" -p "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes -o LogLevel=ERROR nodeadmin@127.0.0.1 "$@"; }
 stop_vm() { [[ -f "${W}/qemu.pid" ]] && kill "$(cat "${W}/qemu.pid")" 2>/dev/null; rm -f "${W}/qemu.pid"; sleep 2; }
 
 # ── scenarios ──────────────────────────────────────────────────────────────────
@@ -98,11 +106,12 @@ autoinstall:
   early-commands:
     - |
       for d in /sys/block/*; do n="${d##*/}"; echo "PROBE $n $(udevadm info --query=property --name=/dev/$n | grep '^ID_SERIAL=')" > /dev/ttyS0; done
-      exit 1
+      echo PROBE_DONE > /dev/ttyS0
+      poweroff -f
 UD
   printf 'instance-id: probe\nlocal-hostname: probe\n' >"${W}/probe/meta-data"
   xorrisofs -o "${W}/probe.iso" -V CIDATA -r -J "${W}/probe/user-data" "${W}/probe/meta-data" >/dev/null 2>&1
-  run_installer "${W}/probe.iso" "${W}/probe-serial.log"
+  run_installer "${W}/probe.iso" "${W}/probe-serial.log" "PROBE_DONE"
   grep -a '^PROBE ' "${W}/probe-serial.log" | tr -d '\r' | sort -u >"${W}/probe.txt"
   cat "${W}/probe.txt" >&2
   OS_ID="$(grep -a "nvme" "${W}/probe.txt" | grep -a "${OS_SERIAL}" | head -1 | sed -n 's/.*ID_SERIAL=//p')"
@@ -116,7 +125,7 @@ s_install() {
   load_ids || return 1; new_disks; ensure_key; extract_boot_files
   stage_site "${OS_ID}" "${DATA_ID}"; build_seed; ok_if seed_built test -f "${W}/seed/nocloud-seed.iso" || return 1
   local before_data; before_data="$(disk_raw_sum "${W}/data.qcow2")"; echo "${before_data}" >"${W}/data.before"
-  run_installer "${W}/seed/nocloud-seed.iso" "${W}/install-serial.log"
+  run_installer "${W}/seed/nocloud-seed.iso" "${W}/install-serial.log" "An error occurred. Press enter to start a shell"
   grep -a -q -E "Rebooting|reboot: Restarting|install.*complete" "${W}/install-serial.log"; result installer_completed $?
   eq data_disk_untouched_by_installer "$(disk_raw_sum "${W}/data.qcow2")" "${before_data}"
   boot_installed; result installed_system_boots_and_accepts_the_key $? || return 1
@@ -132,7 +141,7 @@ s_install() {
   vmssh 'sudo systemctl is-system-running --wait' >"${W}/system-state.txt" 2>&1; cat "${W}/system-state.txt" >&2
   vmssh 'sudo ssh -V' >/dev/null 2>&1; true
   # SSH: password authentication is refused
-  ssh -p "${SSH_PORT}" -o PreferredAuthentications=password -o PubkeyAuthentication=no -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR admin@127.0.0.1 true >/dev/null 2>&1
+  ssh -p "${SSH_PORT}" -o PreferredAuthentications=password -o PubkeyAuthentication=no -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR nodeadmin@127.0.0.1 true >/dev/null 2>&1
   pw_rc=$?; eq password_ssh_refused "$([[ ${pw_rc} -ne 0 ]] && echo refused)" refused
   # secrets left behind by the installer (hash, token shapes) in logs and cloud-init state
   vmssh "sudo grep -r -l -F '\$6\$fixturesalt' /var/log /var/lib/cloud /etc/cloud /run/cloud-init 2>/dev/null" >"${W}/secret-files.txt" 2>&1
@@ -147,14 +156,10 @@ s_negative() { # a seed whose OS serial matches no disk must abort BEFORE any di
   load_ids || return 1; new_disks; ensure_key; extract_boot_files
   stage_site "NoSuchDisk_000000" "${DATA_ID}"; build_seed
   local b_os b_data; b_os="$(disk_raw_sum "${W}/os.qcow2")"; b_data="$(disk_raw_sum "${W}/data.qcow2")"
-  run_installer "${W}/seed/nocloud-seed.iso" "${W}/negative-serial.log"
+  run_installer "${W}/seed/nocloud-seed.iso" "${W}/negative-serial.log" "aborting before any disk is touched"
   grep -a -q "found 0 and 1: aborting before any disk is touched" "${W}/negative-serial.log"; result guard_message_seen_missing_os_disk $?
   eq os_disk_byte_identical_after_abort "$(disk_raw_sum "${W}/os.qcow2")" "${b_os}"
   eq data_disk_byte_identical_after_abort "$(disk_raw_sum "${W}/data.qcow2")" "${b_data}"
-  # ambiguous: the data serial equals the stale disk's serial scheme is covered by unit tests; here OS and data swapped must not erase the data disk
-  stage_site "${DATA_ID}" "${OS_ID}"; build_seed
-  run_installer "${W}/seed/nocloud-seed.iso" "${W}/swapped-serial.log"
-  true
 }
 
 s_reinstall() { # install, create data on the data disk with node-setup 00, reinstall the OS: the data must survive
@@ -163,7 +168,7 @@ s_reinstall() { # install, create data on the data disk with node-setup 00, rein
   boot_installed || { result reinstall_vm_boots 1; return 1; }
   rm -rf "${W}/np-tree"; mkdir -p "${W}/np-tree"; git -C "${ROOT}" archive --format=tar HEAD | tar -x -C "${W}/np-tree"
   tar -C "${W}/np-tree" -czf "${W}/np.tgz" .
-  scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" admin@127.0.0.1:/tmp/np.tgz
+  scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" nodeadmin@127.0.0.1:/tmp/np.tgz
   vmssh 'rm -rf /tmp/np && mkdir /tmp/np && tar -xzf /tmp/np.tgz -C /tmp/np'
   vmssh "sudo DATA_DISK_SERIAL='${DATA_ID}' ETCD_SIZE=1G LONGHORN_SIZE=2G bash /tmp/np/targets/ubuntu-server-26.04/node-setup/00-data-disk.sh" >"${W}/data-disk-1.txt" 2>&1; result node_setup_00_first_run $?
   vmssh 'findmnt -n /var/lib/persistent && findmnt -n /var/lib/etcd'; result data_partitions_mounted $?
@@ -174,10 +179,10 @@ s_reinstall() { # install, create data on the data disk with node-setup 00, rein
   stop_vm
   # reinstall the OS onto the same disks
   local before_layout; before_layout="$(disk_raw_sum "${W}/data.qcow2")"
-  run_installer "${W}/seed/nocloud-seed.iso" "${W}/reinstall-serial.log"
+  run_installer "${W}/seed/nocloud-seed.iso" "${W}/reinstall-serial.log" "An error occurred. Press enter to start a shell"
   eq data_disk_byte_identical_after_os_reinstall "$(disk_raw_sum "${W}/data.qcow2")" "${before_layout}"
   boot_installed || { result reinstall_vm_boots 1; return 1; }
-  scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" admin@127.0.0.1:/tmp/np.tgz
+  scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" nodeadmin@127.0.0.1:/tmp/np.tgz
   vmssh 'rm -rf /tmp/np && mkdir /tmp/np && tar -xzf /tmp/np.tgz -C /tmp/np'
   vmssh "sudo DATA_DISK_SERIAL='${DATA_ID}' bash /tmp/np/targets/ubuntu-server-26.04/node-setup/00-data-disk.sh" >"${W}/data-disk-2.txt" 2>&1; result node_setup_00_after_reinstall $?
   grep -q "Layout already present" "${W}/data-disk-2.txt"; result reinstall_recognises_the_layout_no_repartition $?

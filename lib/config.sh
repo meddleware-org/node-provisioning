@@ -60,6 +60,17 @@ np_check_type() {
   esac
 }
 
+# Names the installer refuses for the first user. A short built-in list is always applied; the full list shipped with the
+# pinned installer revision (scripts/fetch-subiquity-schema.sh writes .cache/reserved-usernames) is applied when present.
+NP_BUILTIN_RESERVED=" root admin daemon bin sys sync games man lp mail news uucp proxy www-data backup list irc gnats nobody adm tty disk sudo ssh sshd operator staff users shadow wheel "
+np_check_reserved_user() { # <user>
+  local u="$1" f="${NP_RESERVED_USERNAMES:-${NP_ROOT:-.}/.cache/reserved-usernames}"
+  [[ "${NP_BUILTIN_RESERVED}" != *" ${u} "* ]] || np_die "ADMIN_USER '${u}' is reserved by the installer: choose another name"
+  if [[ -f "${f}" ]] && grep -v '^#' "${f}" | awk '{print $1}' | grep -qx -- "${u}"; then
+    np_die "ADMIN_USER '${u}' is reserved by the installer: choose another name"
+  fi
+}
+
 # np_set <key> <value> <base-dir> <origin>: type-check and store (paths resolve against base-dir).
 np_set() {
   local key="$1" val="$2" base="$3" origin="$4" type

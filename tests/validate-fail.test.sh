@@ -40,6 +40,17 @@ fresh; sed -i '/^TIMEZONE=/d' "${T_TMP}/s/site.env";                            
 fresh; sed -i 's/^TIMEZONE=.*/TIMEZONE=Europe\/..\/x/' "${T_TMP}/s/site.env";     render_fails "invalid TIMEZONE"
 fresh; sed -i 's/^APT_FALLBACK=.*/APT_FALLBACK=whatever/' "${T_TMP}/s/site.env";   render_fails "invalid APT_FALLBACK"
 
+# reserved administrator names (the installer refuses them: 'admin' was found the hard way in a VM install)
+for u in admin root sshd operator; do
+  fresh; sed -i "s/^ADMIN_USER=.*/ADMIN_USER=${u}/" "${T_TMP}/s/site.env"; render_fails "reserved ADMIN_USER ${u}"
+  [[ "${OUT}" == *"reserved by the installer"* ]] && ok "reserved ADMIN_USER ${u} is explained" || bad "reserved ADMIN_USER ${u} is explained"
+done
+printf '# test list\nzzreserved\n' >"${T_TMP}/reserved"
+fresh; sed -i "s/^ADMIN_USER=.*/ADMIN_USER=zzreserved/" "${T_TMP}/s/site.env"
+NP_RESERVED_USERNAMES="${T_TMP}/reserved" run_cli render --site "${T_TMP}/s" --node node1 --out "${T_TMP}/o"
+[[ "${RC}" -ne 0 ]] && ok "the pinned installer list is applied when present" || bad "the pinned installer list is applied when present"
+fresh; render_ok "a non-reserved name is accepted"
+
 # secret handling
 fresh; chmod 644 "${T_TMP}/s/ph";                                render_fails "password file readable by others"
 fresh; chmod 640 "${T_TMP}/s/ph";                                render_fails "password file readable by group"

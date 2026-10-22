@@ -20,6 +20,7 @@ np_prepare() {
   np_load_file "${NP_SITE_DIR}/site.env" site "${NP_SITE_DIR}"
   np_load_file "${NP_SITE_DIR}/nodes/${node}.env" node "${NP_SITE_DIR}"
   np_finish_config
+  np_check_reserved_user "${CFG[ADMIN_USER]}"
   [[ "${CFG[OS_DISK_SERIAL]}" != "${CFG[DATA_DISK_SERIAL]}" ]] || np_die "OS_DISK_SERIAL and DATA_DISK_SERIAL must name different disks"
   if [[ -z "${CFG[PASSWORD_HASH_FILE]:-}" ]]; then
     CFG[PASSWORD_HASH_FILE]="${HOME}/.config/node-provisioning/${NP_SITE_NAME}/${node}/password-hash"
