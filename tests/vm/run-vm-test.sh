@@ -99,7 +99,16 @@ boot_installed() { # background; waits for ssh
   return 1
 }
 vmssh() { ssh -i "${W}/key" -p "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes -o LogLevel=ERROR nodeadmin@127.0.0.1 "$@"; }
-stop_vm() { [[ -f "${W}/qemu.pid" ]] && kill "$(cat "${W}/qemu.pid")" 2>/dev/null; rm -f "${W}/qemu.pid"; sleep 2; }
+stop_vm() { # ask the VM to power off, then make sure the process is really gone (a dying VM still holds the disks and the port)
+  local pid i
+  [[ -f "${W}/qemu.pid" ]] || return 0
+  pid="$(cat "${W}/qemu.pid")"
+  vmssh 'sudo systemctl poweroff' >/dev/null 2>&1 || true
+  for i in $(seq 1 30); do kill -0 "${pid}" 2>/dev/null || break; sleep 1; done
+  if kill -0 "${pid}" 2>/dev/null; then kill "${pid}" 2>/dev/null; for i in $(seq 1 15); do kill -0 "${pid}" 2>/dev/null || break; sleep 1; done; fi
+  if kill -0 "${pid}" 2>/dev/null; then kill -9 "${pid}" 2>/dev/null; sleep 1; fi
+  rm -f "${W}/qemu.pid"
+}
 
 # ── scenarios ──────────────────────────────────────────────────────────────────
 s_probe() { # learn the real udev ID_SERIAL strings of the emulated disks from the installer environment
