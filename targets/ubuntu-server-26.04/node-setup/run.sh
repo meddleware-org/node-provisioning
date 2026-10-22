@@ -4,8 +4,8 @@
 # Usage: run.sh [preflight|setup|all]     (default: all)
 #
 # Configuration arrives through the environment (the CLI exports the site and node values):
-#   required by 03/04/05: KUBE_MINOR KUBE_VERSION PAUSE_IMAGE LAN_CIDR POD_CIDR
-#   optional pass-through: DATA_DISK ETCD_SIZE LONGHORN_SIZE REGISTRY_UID REGISTRY_GID WIPE_DATA_DISK
+#   required: DATA_DISK_SERIAL (00), KUBE_MINOR KUBE_VERSION PAUSE_IMAGE (03/04), LAN_CIDR POD_CIDR (05)
+#   optional pass-through: ETCD_SIZE LONGHORN_SIZE REGISTRY_UID REGISTRY_GID WIPE_DATA_DISK
 #                          ALLOW_ANYWHERE PRO_ENABLE PRO_DISABLE EXPECT_* SKIP_PREFLIGHT
 # Order and failure semantics: 00-04 are fatal; 05-07 report and continue.
 

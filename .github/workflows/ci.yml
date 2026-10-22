@@ -19,7 +19,7 @@ jobs:
       # shellcheck is preinstalled on the GitHub-hosted Ubuntu runners.
       - name: shellcheck
         run: |
-          shellcheck -S warning -x -P SCRIPTDIR bin/node-provisioning lib/*.sh scripts/*.sh tests/*.sh targets/*/node-setup/*.sh
+          shellcheck -S warning -x -P SCRIPTDIR bin/node-provisioning lib/*.sh scripts/*.sh tests/*.sh tests/data-disk/driver.sh targets/*/node-setup/*.sh
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo docker.io/rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 -color
 

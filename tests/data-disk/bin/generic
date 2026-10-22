@@ -1,0 +1,36 @@
+#!/bin/bash
+# Stubs for the data-disk test. State lives under $F (a fake tree): serials/<disk>, blkid.db ("dev|label|uuid"),
+# root-disk. No stub touches a real device.
+F="${NP_FAKE:-/fake}"
+name="$(basename "$0")"
+line="${name}"; for a in "$@"; do line+=" ${a}"; done
+printf '%s\n' "${line}" >>"${F}/calls.log"
+db="${F}/blkid.db"
+case "${name}" in
+  udevadm)
+    if [[ "$1" == info ]]; then
+      n="${3#--name=/dev/}"; [[ -f "${F}/serials/${n}" ]] && echo "ID_SERIAL=$(cat "${F}/serials/${n}")"
+    fi ;;
+  findmnt) echo "/dev/$(cat "${F}/root-disk")p3" ;;
+  lsblk)
+    if [[ "$1" == -no && "$2" == PKNAME ]]; then cat "${F}/root-disk"
+    elif [[ "$1" == -no && "$2" == NAME ]]; then
+      d="$3"; basename "${d}"
+      awk -F'|' -v d="${d}" '$1 ~ "^" d "p?[0-9]+$" {print $1}' "${db}" 2>/dev/null | sed 's#.*/##'
+    fi ;;
+  blkid)
+    last="${@: -1}"
+    if [[ "$1" == -s && "$2" == LABEL ]]; then awk -F'|' -v d="${last}" '$1 == d {print $2}' "${db}" 2>/dev/null | head -1
+    elif [[ "$1" == -s && "$2" == UUID ]]; then awk -F'|' -v d="${last}" '$1 == d {print $3}' "${db}" 2>/dev/null | head -1
+    elif [[ "$1" == -o && "$2" == device && "$3" == -t ]]; then l="${4#LABEL=}"; awk -F'|' -v l="${l}" '$2 == l {print $1}' "${db}" 2>/dev/null
+    fi
+    exit 0 ;;
+  wipefs)
+    d="${@: -1}"; [[ -f "${db}" ]] && { grep -v -E "^${d}p?[0-9]+\\|" "${db}" >"${db}.new" || true; mv -f "${db}.new" "${db}"; } ;;
+  mkfs.ext4)
+    label=""; prev=""; for a in "$@"; do [[ "${prev}" == -L ]] && label="${a}"; prev="${a}"; done
+    dev="${@: -1}"; uuid="uuid-$(echo "${dev}" | md5sum | cut -c1-8)"
+    echo "${dev}|${label}|${uuid}" >>"${db}" ;;
+  sfdisk) cat >/dev/null ;;
+esac
+exit 0

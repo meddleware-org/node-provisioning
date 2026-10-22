@@ -11,7 +11,7 @@ doc=yaml.safe_load(open(sys.argv[1]))["autoinstall"]
 open(sys.argv[2],"w").write(doc["early-commands"][0])
 PY
 check "guard extracted from user-data" test -s "${T_TMP}/guard.sh"
-SH=sh; command -v dash >/dev/null && SH=dash
+SH="sh"; if command -v dash >/dev/null; then SH="dash"; fi
 check "guard is valid POSIX sh (${SH} -n)" ${SH} -n "${T_TMP}/guard.sh"
 check "guard uses no bashisms" bash -c "! grep -n -E '\[\[|\]\]|<<<|\\$\\{[a-z_]+//|local ' '${T_TMP}/guard.sh'"
 
