@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Install with: git config core.hooksPath scripts/hooks
+# Blocks a commit that adds identifying or secret-shaped values. Set NP_HYGIENE_SITE to your private site directory so its own
+# values (host names, addresses, serials) are used as a denylist.
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+if [[ -n "${NP_HYGIENE_SITE:-}" ]]; then exec bash "${root}/scripts/check-public-hygiene.sh" --site "${NP_HYGIENE_SITE}"; fi
+exec bash "${root}/scripts/check-public-hygiene.sh"
