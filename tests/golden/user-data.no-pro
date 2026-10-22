@@ -52,6 +52,10 @@ autoinstall:
             - 192.0.2.53
 
   storage:
+    # Kubernetes requires swap off: no swap partition below, and no default swap file (curtin would create
+    # /swap.img when no swap is defined).
+    swap:
+      size: 0
     config:
       # ── OS disk: boot + root ──────────────────────────────────────────────
       - type: disk
@@ -79,22 +83,6 @@ autoinstall:
         id: disk0-efi-mnt
         device: disk0-efi-fs
         path: /boot/efi
-
-      - type: partition
-        id: disk0-swap
-        device: disk0
-        size: 4G
-
-      - type: format
-        id: disk0-swap-fs
-        volume: disk0-swap
-        fstype: swap
-        label: swap
-
-      - type: mount
-        id: disk0-swap-mnt
-        device: disk0-swap-fs
-        path: ""
 
       - type: partition
         id: disk0-root
@@ -200,7 +188,7 @@ autoinstall:
     - "mkdir -p /target/etc/sudoers.d && echo 'admin ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/admin && chmod 440 /target/etc/sudoers.d/admin"
     # kubeadm expects /var/lib/etcd owned by root with mode 700
     - "test -d /target/var/lib/etcd && chmod 700 /target/var/lib/etcd || true"
-    # Disable swap in /etc/fstab — Kubernetes requires swap off
+    # Belt and braces: remove any swap entry from /etc/fstab (none is expected)
     - "sed -i '/\\bswap\\b/d' /target/etc/fstab || true"
     # ── Telemetry / phone-home hardening ─────────────────────────────────────
     # Apport: crash reporter that uploads crash data to Canonical

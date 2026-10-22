@@ -39,6 +39,12 @@ def check_disk_identity(auto):
         serial = (disk.get("match") or {}).get("serial")
         if not isinstance(serial, str) or not serial or any(c in serial for c in "*?[]"):
             errors.append("disk %s has no exact match.serial" % disk.get("id"))
+    swap = storage.get("swap") or {}
+    if swap.get("size") != 0:
+        errors.append("storage.swap.size must be 0 (Kubernetes requires swap off)")
+    for action in storage.get("config", []):
+        if isinstance(action, dict) and (action.get("fstype") == "swap" or str(action.get("id", "")).endswith("swap")):
+            errors.append("storage.config must not define a swap partition")
     if not auto.get("timezone"):
         errors.append("autoinstall.timezone must be set explicitly")
     cmds = auto.get("early-commands") or []
