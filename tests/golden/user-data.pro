@@ -184,8 +184,10 @@ autoinstall:
       fi
 
   late-commands:
-    # Set -e and use a wrapper to catch errors without aborting early.
-    # (Subiquity runs late-commands via bash, so set -e applies.)
+    # late-commands run under sh (dash), and a multi-line command reports only its LAST command's status.
+    # A multi-line command therefore starts with `set -eu` so that any failure aborts the install instead of
+    # silently producing a node without its network configuration. Single-line commands that are allowed to
+    # fail say so explicitly with `|| true`.
     # Lock down sudo — passwordless for the administrator.
     - "mkdir -p /target/etc/sudoers.d && echo 'admin ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/admin && chmod 440 /target/etc/sudoers.d/admin"
     # kubeadm expects /var/lib/etcd owned by root with mode 700
@@ -205,6 +207,7 @@ autoinstall:
     # This is belt-and-suspenders alongside per-app disabling — catches any
     # service that ignores its own config flag.
     - |
+      set -eu
       cat >> /target/etc/hosts <<'TELEMETRY_BLOCK'
 
       # Telemetry / analytics endpoint blocks (added by autoinstall)
@@ -218,7 +221,7 @@ autoinstall:
     # Apply netplan configuration (network bonding + VLANs + static IP).
     # This runs during autoinstall (late-commands), so networking is ready on first boot.
     - |
-      set +e
+      set -eu
       mkdir -p /target/etc/netplan
       cat > /target/etc/netplan/10-site.yaml <<'NETPLAN'
       # Netplan for the installed system: an LACP bond carrying one tagged VLAN.
@@ -271,7 +274,6 @@ autoinstall:
       ExecStart=
       ExecStart=/usr/lib/systemd/systemd-networkd-wait-online --interface=bond0.100
       OVERRIDE
-      set -e
 
   updates: security
 
