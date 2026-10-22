@@ -26,6 +26,8 @@ ETCD_SIZE	size	no	50G	no	etcd partition on the data disk.
 LONGHORN_SIZE	size	no	150G	no	Longhorn fast-tier partition.
 REGISTRY_UID	int	no	1000	no	Owner uid of the persistent registry directory.
 REGISTRY_GID	int	no	1000	no	Owner gid of the persistent registry directory.
+## hardening
+SSH_ALLOW_TCP_FORWARDING	bool	no	false	no	Allow ssh -L / -R port forwarding.
 ## ubuntu pro
 PRO_ENABLE	list:text	no	esm-infra,esm-apps,livepatch	no	Pro services to enable.
 PRO_DISABLE	list:text	no	landscape,anbox-cloud	no	Pro services to disable.

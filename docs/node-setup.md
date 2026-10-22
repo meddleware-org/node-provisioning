@@ -14,6 +14,7 @@ is idempotent.
 | firewall | `05-ufw.sh` | reported, continues |
 | telemetry opt-outs | `06-telemetry.sh` | reported, continues |
 | Ubuntu Pro posture | `07-ubuntu-pro.sh` | reported, continues |
+| host hardening | `08-hardening.sh` | fatal |
 
 Configuration arrives as environment variables: run with `--site DIR --node NAME` to export the site and node values, or
 export them yourself. Required: `KUBE_MINOR`, `KUBE_VERSION`, `PAUSE_IMAGE`, `LAN_CIDR`, `POD_CIDR`. Other knobs are

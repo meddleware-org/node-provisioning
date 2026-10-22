@@ -7,7 +7,7 @@
 #   required: DATA_DISK_SERIAL (00), KUBE_MINOR KUBE_VERSION PAUSE_IMAGE (03/04), LAN_CIDR POD_CIDR (05)
 #   optional pass-through: ETCD_SIZE LONGHORN_SIZE REGISTRY_UID REGISTRY_GID WIPE_DATA_DISK
 #                          ALLOW_ANYWHERE PRO_ENABLE PRO_DISABLE EXPECT_* SKIP_PREFLIGHT
-# Order and failure semantics: 00-04 are fatal; 05-07 report and continue.
+# Order and failure semantics: 00-04 and 08 are fatal; 05-07 report and continue.
 
 set -euo pipefail
 
@@ -68,6 +68,10 @@ setup() {
 
   section "Ubuntu Pro service posture"
   bash "${SCRIPTS_DIR}/07-ubuntu-pro.sh" || log_warn "Ubuntu Pro posture had issues — continuing (non-fatal)"
+
+  section "Host hardening (SSH, sysctl, unattended upgrades)"
+  bash "${SCRIPTS_DIR}/08-hardening.sh" || { log_error "Host hardening failed"; exit 1; }
+  log_ok "Host hardening complete"
 
   section "Package cleanup (autoremove + autoclean)"
   apt-get autoremove -y -q
