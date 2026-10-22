@@ -31,9 +31,8 @@ SSH_ALLOW_TCP_FORWARDING	bool	no	false	no	Allow ssh -L / -R port forwarding.
 ## ubuntu pro
 PRO_ENABLE	list:text	no	esm-infra,esm-apps,livepatch	no	Pro services to enable.
 PRO_DISABLE	list:text	no	landscape,anbox-cloud	no	Pro services to disable.
-## preflight expectations (TRANSITIONAL: reworked with 01-preflight)
+## preflight expectations
 EXPECT_ARCH	text	no	x86_64	no	Required machine architecture.
 EXPECT_KERNEL_PREFIX	text	no	-	no	Warn when the running kernel does not start with this.
-EXPECT_DISKS	list:text	no	-	no	Block devices (names) that must exist.
 EXPECT_INTERFACES	list:text	no	-	no	Network interfaces that must exist.
 EXPECT_BONDS	list:text	no	-	no	Bonds expected after netplan (warning only).

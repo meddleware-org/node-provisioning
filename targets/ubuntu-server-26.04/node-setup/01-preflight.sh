@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Preflight check before Kubernetes prerequisites are installed.
-# Validates: OS version, expected disks (EXPECT_DISKS), swap state, CRI-O state, network interfaces.
+# Validates: OS version, the OS and data disks (by serial), swap state, CRI-O state, network interfaces.
 # Expectations come from the site configuration (EXPECT_*), as comma-separated lists.
 # Idempotent — safe to re-run at any time.
 
@@ -54,15 +54,37 @@ else
 fi
 
 # ── Disk layout ──────────────────────────────────────────────────────────────
+# Disks are identified by udev ID_SERIAL, never by name: device names are not stable across boots.
 echo "── Disks"
-for dev in ${EXPECT_DISKS//,/ }; do
-  if [[ -b "/dev/${dev}" ]]; then
-    SIZE=$(lsblk -dno SIZE "/dev/${dev}" 2>/dev/null || echo "unknown")
-    ok "/dev/${dev} present (${SIZE})"
+SYS_BLOCK="${NP_SYS_BLOCK:-/sys/block}"
+resolve_serial() { # <serial> -> sets RESOLVED_N and RESOLVED_DEV
+  local want="$1" dev name serial
+  RESOLVED_N=0; RESOLVED_DEV=""
+  for dev in "${SYS_BLOCK}"/*; do
+    name="${dev##*/}"
+    case "${name}" in loop*|ram*|zram*|sr*|fd*|nbd*|dm-*|md*) continue ;; esac
+    serial="$(udevadm info --query=property --name="/dev/${name}" 2>/dev/null | sed -n 's/^ID_SERIAL=//p')"
+    if [[ "${serial}" == "${want}" ]]; then RESOLVED_DEV="/dev/${name}"; RESOLVED_N=$((RESOLVED_N + 1)); fi
+  done
+}
+OS_RESOLVED=""
+for pair in "OS_DISK_SERIAL:OS disk" "DATA_DISK_SERIAL:data disk"; do
+  var="${pair%%:*}"; what="${pair#*:}"; want="${!var:-}"
+  if [[ -z "${want}" ]]; then info "${var} is not set: ${what} not checked"; continue; fi
+  resolve_serial "${want}"
+  if [[ "${RESOLVED_N}" -eq 1 ]]; then
+    SIZE=$(lsblk -dno SIZE "${RESOLVED_DEV}" 2>/dev/null || echo "unknown")
+    ok "${what} present (${RESOLVED_DEV}, ${SIZE})"
+    [[ "${var}" == OS_DISK_SERIAL ]] && OS_RESOLVED="${RESOLVED_DEV}"
   else
-    fail "/dev/${dev} not found — check disk layout"
+    fail "${what}: expected exactly one disk with the configured serial, found ${RESOLVED_N}"
   fi
 done
+if [[ -n "${OS_RESOLVED}" ]]; then
+  ROOT_PK="$(lsblk -no PKNAME "$(findmnt -no SOURCE / 2>/dev/null || true)" 2>/dev/null | head -1 || true)"
+  if [[ -n "${ROOT_PK}" && "/dev/${ROOT_PK}" == "${OS_RESOLVED}" ]]; then ok "root filesystem is on the OS disk"
+  else warn "root filesystem is not on the OS disk (${OS_RESOLVED})"; fi
+fi
 
 # Data-disk partitions are provisioned by scripts/00-data-disk.sh (which runs later,
 # in the OS-setup phase — AFTER this preflight). So on a first boot they are expected
@@ -102,7 +124,7 @@ else
 fi
 
 if command -v kubectl &>/dev/null; then
-  ok "kubectl $(kubectl version --client --short 2>/dev/null | head -1 || echo '(version check failed)')"
+  ok "kubectl $(kubectl version --client 2>/dev/null | head -1 || echo '(version check failed)')"
 fi
 
 # ── CRI-O ─────────────────────────────────────────────────────────────────────
