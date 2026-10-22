@@ -1,7 +1,8 @@
 #!/bin/bash
 # Runs INSIDE the container: 01-preflight.sh under fake disks. Prints "RESULT <name> PASS|FAIL".
 export PATH="/stubs/bin:${PATH}"
-export NP_FAKE=/fake NP_SYS_BLOCK=/fake/sys EXPECT_ARCH="$(uname -m)" EXPECT_INTERFACES=eth0 EXPECT_BONDS=
+EXPECT_ARCH="$(uname -m)"
+export NP_FAKE=/fake NP_SYS_BLOCK=/fake/sys EXPECT_ARCH EXPECT_INTERFACES=eth0 EXPECT_BONDS=
 OS_S=ExampleVendor_OsDisk_EX0000000001; DATA_S=ExampleVendor_DataDisk_EX0000000002
 reset() {
   find /fake -mindepth 1 -delete; mkdir -p /fake/sys/nvme0n1 /fake/sys/nvme1n1 /fake/sys/sda /fake/serials

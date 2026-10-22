@@ -20,11 +20,15 @@
 # Open everything (NOT recommended — only for an isolated bench network):
 #   ALLOW_ANYWHERE=1 bash 05-ufw.sh
 
-set -euo pipefail
+set -Eeuo pipefail
 
 # Subnet permitted to reach internal/administrative ports.
 LAN_CIDR="${LAN_CIDR:?LAN_CIDR is required}"
 ALLOW_ANYWHERE="${ALLOW_ANYWHERE:-0}"
+POD_CIDR="${POD_CIDR:?POD_CIDR is required}"
+cidr_re='^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$'
+[[ "${LAN_CIDR}" =~ ${cidr_re} ]] || { echo "  [FAIL] LAN_CIDR is not a CIDR" >&2; exit 1; }
+[[ "${POD_CIDR}" =~ ${cidr_re} ]] || { echo "  [FAIL] POD_CIDR is not a CIDR" >&2; exit 1; }
 
 # _allow <port-spec> <proto> <comment>
 # Opens a port restricted to LAN_CIDR by default; from Anywhere only if
@@ -47,6 +51,15 @@ echo "  [OK] ufw installed"
 
 # Reset to a clean state (removes any existing rules, disables ufw)
 ufw --force reset
+
+# From here until the end of this script the firewall is DISABLED. If anything fails, do not leave the node open:
+# keep SSH reachable and enable the firewall with the rules staged so far (incoming is denied by default).
+fail_safe() {
+  echo "  [FAIL] 05-ufw failed: enabling the firewall with the rules staged so far (SSH stays allowed)" >&2
+  { ufw allow OpenSSH || ufw allow 22/tcp; } >/dev/null 2>&1 || true
+  ufw --force enable >/dev/null 2>&1 || true
+}
+trap fail_safe ERR
 
 # ── Default policies ──────────────────────────────────────────────────────────
 # routed=allow is REQUIRED: Cilium forwards pod traffic through the host, and UFW
@@ -74,7 +87,6 @@ echo "  [OK] deny 80/443"
 # the API server (6443) and any other service whose endpoint is on this node.
 # The pod CIDR is trusted internal traffic — pods are scheduled by kubelet and
 # already allowed to do anything by Kubernetes RBAC.
-POD_CIDR="${POD_CIDR:?POD_CIDR is required}"
 ufw allow from "${POD_CIDR}" comment "Pod network (Cilium kube-proxy replacement)"
 echo "  [OK] pod CIDR ${POD_CIDR} — all ports allowed (host-bound ClusterIP traffic)"
 
@@ -115,6 +127,8 @@ echo "  [OK] Longhorn (9500-9600/tcp)"
 # ── Enable UFW ────────────────────────────────────────────────────────────────
 ufw --force enable
 ufw status verbose
+trap - ERR
+ufw status | grep -qiE 'OpenSSH|^22' || { echo "  [FAIL] SSH is not allowed in the active ruleset" >&2; exit 1; }
 echo "  [OK] ufw enabled"
 
 echo "==> 05-ufw: done"

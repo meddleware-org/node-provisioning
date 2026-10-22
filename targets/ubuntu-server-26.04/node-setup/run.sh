@@ -7,7 +7,7 @@
 #   required: DATA_DISK_SERIAL (00), KUBE_MINOR KUBE_VERSION PAUSE_IMAGE (03/04), LAN_CIDR POD_CIDR (05)
 #   optional pass-through: ETCD_SIZE LONGHORN_SIZE REGISTRY_UID REGISTRY_GID WIPE_DATA_DISK
 #                          ALLOW_ANYWHERE PRO_ENABLE PRO_DISABLE EXPECT_* SKIP_PREFLIGHT
-# Order and failure semantics: 00-04 and 08 are fatal; 05-07 report and continue.
+# Order and failure semantics: 00-05 and 08 are fatal; 06-07 report and continue.
 
 set -euo pipefail
 
@@ -59,7 +59,7 @@ setup() {
   log_ok "kubeadm, kubelet, kubectl installed and verified"
 
   section "UFW firewall configuration"
-  bash "${SCRIPTS_DIR}/05-ufw.sh" || log_warn "UFW configuration had issues but continuing..."
+  bash "${SCRIPTS_DIR}/05-ufw.sh" || { log_error "Firewall configuration failed"; exit 1; }
   log_ok "UFW configuration complete"
 
   section "Disabling OS telemetry and phone-home services"

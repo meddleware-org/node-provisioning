@@ -11,7 +11,7 @@ is idempotent.
 | kernel | `02-kernel.sh` | fatal |
 | container runtime | `03-crio.sh` | fatal |
 | kubernetes tools | `04-kubetools.sh` | fatal |
-| firewall | `05-ufw.sh` | reported, continues |
+| firewall | `05-ufw.sh` | fatal (a failure still enables the firewall with SSH allowed) |
 | telemetry opt-outs | `06-telemetry.sh` | reported, continues |
 | Ubuntu Pro posture | `07-ubuntu-pro.sh` | reported, continues |
 | host hardening | `08-hardening.sh` | fatal |

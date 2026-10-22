@@ -27,11 +27,11 @@ FAIL_STEP="" run_setup setup
 check "setup order is 00,02,03,04,05,06,07,08" test "$(tr '\n' ' ' <"${T_TMP}/order.log")" = "00-data-disk 02-kernel 03-crio 04-kubetools 05-ufw 06-telemetry 07-ubuntu-pro 08-hardening "
 FAIL_STEP="" run_setup preflight
 check "preflight runs only 01" test "$(tr '\n' ' ' <"${T_TMP}/order.log")" = "01-preflight "
-for s in 00-data-disk 02-kernel 03-crio 04-kubetools 08-hardening; do
+for s in 00-data-disk 02-kernel 03-crio 04-kubetools 05-ufw 08-hardening; do
   FAIL_STEP="${s}" run_setup setup; rc=$?
   check "${s} failure is fatal: it is the last script run" bash -c "[[ ${rc} -ne 0 && \"\$(tail -1 '${T_TMP}/order.log')\" == '${s}' ]]"
 done
-for s in 05-ufw 06-telemetry 07-ubuntu-pro; do
+for s in 06-telemetry 07-ubuntu-pro; do
   FAIL_STEP="${s}" run_setup setup; rc=$?
   check "${s} failure is reported and the run continues" bash -c "[[ ${rc} -eq 0 ]] && grep -q '08-hardening' '${T_TMP}/order.log'"
 done
