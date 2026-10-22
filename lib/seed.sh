@@ -148,7 +148,7 @@ np_validate_seed() {
 
 # np_build_seed <format> <out-dir>: render, validate and pack into a CIDATA image.
 np_build_seed() {
-  local fmt="$1" out="$2" work tmp artifact kib fat
+  local fmt="$1" out="$2" work tmp artifact kib fat epoch
   case "${fmt}" in iso|img|floppy) ;; *) np_die "--format must be iso, img or floppy" ;; esac
   case "${fmt}" in
     iso) np_have xorrisofs || np_die "format iso needs xorrisofs (apt install xorriso)" ;;
@@ -160,19 +160,27 @@ np_build_seed() {
   np_validate_seed "${work}/seed" "${NP_STRICT:-0}"
   mkdir -p "${out}"
   tmp="${work}/image"
+  # Reproducible output: every timestamp derives from SOURCE_DATE_EPOCH (default: the mtime of VERSION, which in a
+  # release tarball is the commit time), identifiers are fixed, and ownership is normalised.
+  epoch="${SOURCE_DATE_EPOCH:-$(stat -c %Y "${NP_ROOT}/VERSION")}"
+  [[ "${epoch}" =~ ^[0-9]+$ ]] || np_die "SOURCE_DATE_EPOCH must be a number of seconds"
+  export SOURCE_DATE_EPOCH="${epoch}"
+  export TZ=UTC   # FAT stores local time: the build must not depend on the builder's time zone
+  touch -d "@${epoch}" "${work}/seed/user-data" "${work}/seed/meta-data"
   case "${fmt}" in
     iso)
       artifact="${out}/nocloud-seed.iso"
-      xorrisofs -output "${tmp}" -volid CIDATA -joliet -rock "${work}/seed/user-data" "${work}/seed/meta-data" >/dev/null 2>&1 \
-        || np_die "xorrisofs failed" ;;
+      xorrisofs -output "${tmp}" -volid CIDATA -r -J -p node-provisioning -publisher node-provisioning \
+        --modification-date="$(date -u -d "@${epoch}" +%Y%m%d%H%M%S00)" \
+        "${work}/seed/user-data" "${work}/seed/meta-data" >/dev/null 2>&1 || np_die "xorrisofs failed" ;;
     img|floppy)
       if [[ "${fmt}" == img ]]; then kib=4096; fat=auto; artifact="${out}/nocloud-seed.img"
       else kib=1440; fat=12; artifact="${out}/nocloud-seed-floppy.img"; fi
       dd if=/dev/zero of="${tmp}" bs=1024 count="${kib}" status=none
-      if [[ "${fat}" == auto ]]; then mkfs.vfat -n CIDATA "${tmp}" >/dev/null
-      else mkfs.vfat -F "${fat}" -n CIDATA "${tmp}" >/dev/null; fi
-      MTOOLS_SKIP_CHECK=1 mcopy -i "${tmp}" "${work}/seed/user-data" ::user-data || np_die "mcopy user-data failed"
-      MTOOLS_SKIP_CHECK=1 mcopy -i "${tmp}" "${work}/seed/meta-data" ::meta-data || np_die "mcopy meta-data failed"
+      if [[ "${fat}" == auto ]]; then mkfs.vfat --invariant -i 4E505631 -n CIDATA "${tmp}" >/dev/null
+      else mkfs.vfat --invariant -i 4E505631 -F "${fat}" -n CIDATA "${tmp}" >/dev/null; fi
+      MTOOLS_SKIP_CHECK=1 mcopy -m -i "${tmp}" "${work}/seed/user-data" ::user-data || np_die "mcopy user-data failed"
+      MTOOLS_SKIP_CHECK=1 mcopy -m -i "${tmp}" "${work}/seed/meta-data" ::meta-data || np_die "mcopy meta-data failed"
       if [[ "${fmt}" == floppy ]]; then
         [[ "$(stat -c%s "${tmp}")" -le 1474560 ]] || np_die "floppy image exceeds the 1.44 MB limit"
       fi ;;

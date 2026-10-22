@@ -51,3 +51,11 @@ The BMC presents it to the host as a USB device labelled `CIDATA`. Labels and li
 Delete the seed (`img`/`iso`/`floppy` files, any served directory). The installed system keeps its own copy of the
 rendered user-data in installer logs; whether those logs retain secrets is checked in the VM test matrix
 ([verification.md](verification.md)).
+
+## Reproducible builds
+
+Images are byte-reproducible: all timestamps derive from `SOURCE_DATE_EPOCH` (default: the modification time of
+`VERSION`, which is the commit time in a release tarball), identifiers are fixed, ownership is normalised and the build
+runs in UTC (FAT stores local time). The same inputs therefore give the same bytes, which lets you check that an image
+was built from a given site and release. Byte equality **across machines** also needs the same tool versions
+(`xorriso`, `dosfstools`, `mtools`): build inside a pinned container image if you need that.
