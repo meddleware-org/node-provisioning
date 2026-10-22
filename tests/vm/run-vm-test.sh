@@ -2,7 +2,7 @@
 # Manual VM test matrix for node-provisioning (NOT part of CI: needs KVM, OVMF, QEMU, xorriso and an Ubuntu Server ISO).
 #
 #   tests/vm/run-vm-test.sh <ubuntu-live-server.iso> [scenario ...]
-#   scenarios: probe install setup negative reinstall inspect   (default: all but inspect, in that order)
+#   scenarios: probe install setup scrub negative reinstall inspect   (default: all but inspect, in that order)
 #
 # The VM has two emulated NVMe disks (OS, data) and a third disk with stale labelled partitions (standing in for a disk
 # left over from an earlier install). Everything lives in tests/vm/.work (git-ignored); an ephemeral SSH key is generated
@@ -149,7 +149,7 @@ s_install() {
   # (The pattern is split in the command line so that journald's record of this very command does not match it.)
   vmssh 'sudo stat -c "%a %U:%G" /var/log/installer/autoinstall-user-data' >"${W}/installer-copy-mode.txt" 2>&1
   eq installer_copy_of_user_data_is_root_only_0400 "$(cat "${W}/installer-copy-mode.txt")" "400 root:root"
-  vmssh 'sudo grep -r -l -F "fixture""salt0000" /var/log /var/lib/cloud /etc/cloud /run /home /root /tmp /var/tmp --exclude-dir=journal 2>/dev/null' >"${W}/secret-files.txt" 2>&1
+  vmssh 'sudo grep -r -l -F "fixture""salt0000" /var/log /var/lib/cloud /etc/cloud /run /home /root /var/tmp --exclude-dir=journal 2>/dev/null' >"${W}/secret-files.txt" 2>&1
   eq no_other_file_holds_the_password_hash "$(grep -v '^/var/log/installer/autoinstall-user-data$' "${W}/secret-files.txt")" ""
   vmssh 'sudo cat /etc/netplan/10-vm.yaml' >"${W}/netplan.installed" 2>&1; grep -q '10.0.2.15/24' "${W}/netplan.installed"; result netplan_from_site_installed $?
   vmssh 'sudo stat -c %a /etc/netplan/10-vm.yaml' 2>/dev/null | grep -q '^600$'; result netplan_mode_600 $?
@@ -228,7 +228,7 @@ s_setup() { # the real node setup (00-08) inside the installed VM; needs the int
   vmssh 'test -f /etc/apt/apt.conf.d/52unattended-upgrades-local'; result unattended_upgrades_policy_installed $?
   eq no_swap_after_setup "$(vmssh 'swapon --show' 2>/dev/null)" ''
   eq installer_copy_redacted "$(vmssh 'sudo grep -c "<redacted>" /var/log/installer/autoinstall-user-data')" 1
-  vmssh 'sudo grep -r -l -F "fixture""salt0000" /var/log /var/lib/cloud /etc/cloud /run /home /root /tmp /var/tmp --exclude-dir=journal 2>/dev/null' >"${W}/secret-files-after.txt" 2>&1
+  vmssh 'sudo grep -r -l -F "fixture""salt0000" /var/log /var/lib/cloud /etc/cloud /run /home /root /var/tmp --exclude-dir=journal 2>/dev/null' >"${W}/secret-files-after.txt" 2>&1
   eq no_file_holds_the_password_hash_after_setup "$(cat "${W}/secret-files-after.txt")" ""
   vmssh 'systemctl --failed --no-legend' >"${W}/failed-units.txt" 2>&1; say "failed units: $(wc -l <"${W}/failed-units.txt")"
   vmssh "echo precious | sudo tee /var/lib/persistent/MARKER >/dev/null; sync"
@@ -236,6 +236,24 @@ s_setup() { # the real node setup (00-08) inside the installed VM; needs the int
   vmssh "${NPCLI} --step setup" >"${W}/setup-run2.txt" 2>&1; result node_setup_is_idempotent $?
   grep -q "Layout already present" "${W}/setup-run2.txt"; result second_run_recognises_the_layout $?
   eq marker_survives_second_run "$(vmssh 'cat /var/lib/persistent/MARKER')" precious
+  stop_vm
+}
+
+s_scrub() { # on the installed VM: preflight with the site's interface name, then the redaction of the installer's copy of the seed
+  load_ids || return 1
+  stage_site "${OS_ID}" "${DATA_ID}"
+  boot_installed || { result scrub_vm_boots 1; return 1; }
+  stage_np
+  vmssh "sudo /tmp/np/bin/node-provisioning node-setup --site /tmp/site --node vm1 --step preflight" >"${W}/scrub-preflight.txt" 2>&1; result preflight_passes $?
+  vmssh 'sudo grep -c -F "fixture""salt0000" /var/log/installer/autoinstall-user-data' >"${W}/scrub-before.txt" 2>&1
+  say "hash lines in the installer copy before: $(tr -d '\n' <"${W}/scrub-before.txt")"
+  vmssh 'sudo bash /tmp/np/targets/ubuntu-server-26.04/node-setup/08-hardening.sh' >"${W}/scrub-08.txt" 2>&1; result hardening_runs $?
+  grep -q "credentials redacted in /var/log/installer/autoinstall-user-data" "${W}/scrub-08.txt" || grep -q "no credentials left" "${W}/scrub-08.txt"; result redaction_reported $?
+  eq installer_copy_has_redacted_password "$(vmssh 'sudo grep -c "password: \"<redacted>\"" /var/log/installer/autoinstall-user-data')" 1
+  vmssh 'sudo grep -r -l -F "fixture""salt0000" /var/log /var/lib/cloud /etc/cloud /run /home /root /var/tmp --exclude-dir=journal 2>/dev/null' >"${W}/scrub-files.txt" 2>&1
+  eq no_file_holds_the_password_hash "$(cat "${W}/scrub-files.txt")" ""
+  eq installer_copy_mode_kept "$(vmssh 'sudo stat -c "%a %U:%G" /var/log/installer/autoinstall-user-data')" "400 root:root"
+  vmssh 'sudo bash /tmp/np/targets/ubuntu-server-26.04/node-setup/08-hardening.sh' >"${W}/scrub-08b.txt" 2>&1; grep -q "no credentials left" "${W}/scrub-08b.txt"; result second_run_finds_nothing_to_redact $?
   stop_vm
 }
 

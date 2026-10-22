@@ -134,12 +134,13 @@ EOT
 ok "unattended-upgrades policy in place"
 
 # ── Credentials left in the installer's copy of the seed ───────────────────────
-# Subiquity copies the seed's user-data to /var/log/installer/autoinstall-user-data (mode 0400, root only). Redact the
-# secret values in place; the file keeps its mode and every other line.
+# Subiquity copies the seed's user-data to /var/log/installer/autoinstall-user-data (mode 0400, root only), re-serialised as
+# YAML: the values may be quoted or not. Redact every password/token value in place; the file keeps its mode and every other line.
 INSTALLER_COPY=/var/log/installer/autoinstall-user-data
-if [[ -f "${INSTALLER_COPY}" ]] && grep -qE '^[[:space:]]*(password|token):[[:space:]]*"[^"<]' "${INSTALLER_COPY}"; then
+secret_line='^[[:space:]]*(password|token):[[:space:]]*[^[:space:]]'
+if [[ -f "${INSTALLER_COPY}" ]] && grep -E "${secret_line}" "${INSTALLER_COPY}" | grep -qv '<redacted>'; then
   tmp="$(mktemp)"
-  sed -E 's/^([[:space:]]*(password|token):[[:space:]]*)"[^"]*"/\1"<redacted>"/' "${INSTALLER_COPY}" >"${tmp}"
+  sed -E 's/^([[:space:]]*(password|token):[[:space:]]*)[^[:space:]].*$/\1"<redacted>"/' "${INSTALLER_COPY}" >"${tmp}"
   install -m 0400 -o root -g root "${tmp}" "${INSTALLER_COPY}"
   rm -f -- "${tmp}"
   ok "credentials redacted in ${INSTALLER_COPY}"

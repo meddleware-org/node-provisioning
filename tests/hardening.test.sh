@@ -20,7 +20,7 @@ export PATH="/stubs:${PATH}"
 S=/script/08-hardening.sh
 : >/tmp/calls.log
 mkdir -p /etc/ssh/sshd_config.d /etc/sysctl.d /etc/apt/apt.conf.d /var/log/installer
-printf 'autoinstall:\n  identity:\n    username: x\n    password: "%s"\n  ubuntu-pro:\n    token: "%s"\n  keep: "value"\n' 'HASHVALUE-1' 'TOKENVALUE-1' >/var/log/installer/autoinstall-user-data; chmod 400 /var/log/installer/autoinstall-user-data
+printf 'autoinstall:\n  identity:\n    realname: \x27\x27\n    username: x\n    password: %s\n  ubuntu-pro:\n    token: "%s"\n  keep: "value"\n' 'HASHVALUE-1' 'TOKENVALUE-1' >/var/log/installer/autoinstall-user-data; chmod 400 /var/log/installer/autoinstall-user-data
 r() { echo "RESULT $1 $([[ $2 == 0 ]] && echo PASS || echo FAIL)"; }
 bash "${S}" >/tmp/o1 2>&1; r first_run_ok $?
 [[ "$(stat -c %a /etc/ssh/sshd_config.d/99-hardening.conf)" == 644 ]]; r sshd_conf_mode $?

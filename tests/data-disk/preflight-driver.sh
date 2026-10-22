@@ -20,4 +20,5 @@ CUR=data_duplicate;    reset; echo "${DATA_S}" >/fake/serials/sda; run; res bash
 CUR=root_elsewhere;    reset; echo nvme0n1 >/fake/root-disk; run; res bash -c 'grep -q "WARN.*root filesystem is not on the OS disk" /fake/out.txt'
 CUR=serials_unset;     reset; unset OS_DISK_SERIAL DATA_DISK_SERIAL; run; res bash -c '[[ "$(cat /fake/rc)" == 0 ]] && grep -q "OS_DISK_SERIAL is not set" /fake/out.txt'
 CUR=names_not_used;    reset; mv /fake/sys/nvme1n1 /fake/sys/sdq; mv /fake/serials/nvme1n1 /fake/serials/sdq; echo sdq >/fake/root-disk; run; res bash -c '[[ "$(cat /fake/rc)" == 0 ]] && grep -q "/dev/sdq" /fake/out.txt'
+CUR=optional_expectations_unset; reset; unset EXPECT_INTERFACES EXPECT_BONDS EXPECT_KERNEL_PREFIX; run; res bash -c '[[ "$(cat /fake/rc)" == 0 ]] && ! grep -q "unbound variable" /fake/out.txt'
 CUR=no_kubectl_short_flag; res bash -c '! grep -q -- "--short" /script'

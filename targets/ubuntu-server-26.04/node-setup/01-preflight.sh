@@ -139,6 +139,8 @@ fi
 
 # ── Network interfaces ────────────────────────────────────────────────────────
 echo "── Network"
+EXPECT_INTERFACES="${EXPECT_INTERFACES:-}"
+EXPECT_BONDS="${EXPECT_BONDS:-}"
 for iface in ${EXPECT_INTERFACES//,/ }; do
   if ip link show "${iface}" &>/dev/null; then
     ok "${iface} present"
