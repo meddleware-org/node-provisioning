@@ -14,7 +14,8 @@ schema/*.schema.tsv          key | type | required | default | secret | descript
 targets/<distro>/autoinstall user-data template (the only file with @@MARKER@@s)
 targets/<distro>/node-setup  run.sh and numbered scripts
 examples/site/               documentation-only example site (RFC 5737 addresses)
-tests/                       run.sh and *.test.sh; golden/ expected renders; vm/ manual KVM harness
+tests/                       run.sh and *.test.sh (15 suites; container suites need podman or docker); golden/ expected renders;
+                             data-disk/ stubs for the container tests; vm/ manual QEMU/KVM harness and VM-only site
 scripts/                     check-versions.sh, check-public-hygiene.sh, fetch-subiquity-schema.sh
 docs/                        configuration, inventory, seed-delivery, node-setup, verification, audit/
 ```
@@ -25,7 +26,8 @@ docs/                        configuration, inventory, seed-delivery, node-setup
 bash tests/run.sh                    # everything below that runs offline
 shellcheck -S warning -x -P SCRIPTDIR bin/node-provisioning lib/*.sh scripts/*.sh tests/*.sh targets/*/node-setup/*.sh
 bash scripts/check-public-hygiene.sh # secrets and identifying values (also a pre-commit hook)
-bash scripts/check-versions.sh       # VERSION vs tag
+bash scripts/check-versions.sh       # VERSION vs tag (on a tag push also needs a CHANGELOG heading)
+bash tests/vm/run-vm-test.sh <ubuntu-live-server.iso> [probe install negative reinstall]   # manual: KVM, OVMF, QEMU
 ```
 
 ## Conventions
