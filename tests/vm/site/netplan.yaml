@@ -1,0 +1,18 @@
+# Installed-system netplan for the QEMU test VM.
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    nic:
+      match:
+        name: "en*"
+      dhcp4: false
+      dhcp6: false
+      addresses:
+        - 10.0.2.15/24
+      routes:
+        - to: default
+          via: 10.0.2.2
+      nameservers:
+        addresses:
+          - 10.0.2.3

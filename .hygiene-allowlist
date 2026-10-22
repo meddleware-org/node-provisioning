@@ -6,3 +6,7 @@ ipv4|198.18.0.0|example pod network (RFC 2544 benchmarking range)
 sshkey|ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGzHXsxssVSMveNHfSGddEAunpJaxwyErkZsPTvGhgvO|throwaway public key used by examples and tests
 hash|$6$fixturesalt0000$lQtobrhkLdq12cYEDI2CkGby5YM.eAWLLztyfmoxn.aSaNljhNhsq3eEDBL/TlEOMTNZWWULcpmF05JPLiIF5/|deterministic fixture hash (password is not a secret: fixture only)
 term|meddleware-org|public GitHub organisation name
+ipv4|10.0.2.15|QEMU user-mode network default guest address (test VM only)
+ipv4|10.0.2.2|QEMU user-mode network default gateway (test VM only)
+ipv4|10.0.2.3|QEMU user-mode network default DNS (test VM only)
+ipv4|10.0.2.0|QEMU user-mode network (test VM only)
