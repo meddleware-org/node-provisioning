@@ -18,7 +18,10 @@ OVMF_CODE=/usr/share/OVMF/OVMF_CODE_4M.fd; OVMF_VARS_SRC=/usr/share/OVMF/OVMF_VA
 mkdir -p "${W}"
 
 say() { echo "[vm] $*" >&2; }
-result() { echo "RESULT $1 $([[ "$2" == 0 ]] && echo PASS || echo FAIL)"; }
+result() { if [[ "$2" == 0 ]]; then echo "RESULT $1 PASS"; else echo "RESULT $1 FAIL"; fi; }
+# eq <name> <actual> <expected>: PASS when equal. ok_if <name> <command...>: PASS when the command succeeds.
+eq() { local rc=1; [[ "$2" == "$3" ]] && rc=0; result "$1" "${rc}"; return "${rc}"; }
+ok_if() { local n="$1" rc=0; shift; "$@" >/dev/null 2>&1 || rc=1; result "${n}" "${rc}"; return "${rc}"; }
 
 # ── disks ──────────────────────────────────────────────────────────────────────
 new_disks() { # fresh OS, data and stale-HDD images and UEFI vars
@@ -105,31 +108,32 @@ UD
   OS_ID="$(grep -a "nvme" "${W}/probe.txt" | grep -a "${OS_SERIAL}" | head -1 | sed -n 's/.*ID_SERIAL=//p')"
   DATA_ID="$(grep -a "nvme" "${W}/probe.txt" | grep -a "${DATA_SERIAL}" | head -1 | sed -n 's/.*ID_SERIAL=//p')"
   printf 'OS_ID=%s\nDATA_ID=%s\n' "${OS_ID}" "${DATA_ID}" >"${W}/idserials"
-  [[ -n "${OS_ID}" && -n "${DATA_ID}" && "${OS_ID}" != "${DATA_ID}" ]]; result probe_found_distinct_serials $?
+  ok_if probe_found_distinct_serials test -n "${OS_ID}" -a -n "${DATA_ID}" -a "${OS_ID}" != "${DATA_ID}"
 }
 load_ids() { [[ -f "${W}/idserials" ]] || { say "run the probe scenario first"; return 1; }; . "${W}/idserials"; }
 
 s_install() {
   load_ids || return 1; new_disks; ensure_key; extract_boot_files
-  stage_site "${OS_ID}" "${DATA_ID}"; build_seed; [[ -f "${W}/seed/nocloud-seed.iso" ]]; result seed_built $? || return 1
+  stage_site "${OS_ID}" "${DATA_ID}"; build_seed; ok_if seed_built test -f "${W}/seed/nocloud-seed.iso" || return 1
   local before_data; before_data="$(disk_raw_sum "${W}/data.qcow2")"; echo "${before_data}" >"${W}/data.before"
   run_installer "${W}/seed/nocloud-seed.iso" "${W}/install-serial.log"
   grep -a -q -E "Rebooting|reboot: Restarting|install.*complete" "${W}/install-serial.log"; result installer_completed $?
-  [[ "$(disk_raw_sum "${W}/data.qcow2")" == "${before_data}" ]]; result data_disk_untouched_by_installer $?
+  eq data_disk_untouched_by_installer "$(disk_raw_sum "${W}/data.qcow2")" "${before_data}"
   boot_installed; result installed_system_boots_and_accepts_the_key $? || return 1
-  [[ "$(vmssh hostname)" == vm1 ]]; result hostname $?
+  eq hostname "$(vmssh hostname)" vm1
   vmssh 'sudo -n true' >/dev/null 2>&1; result sudo_works $?
-  [[ -z "$(vmssh 'swapon --show' 2>/dev/null)" ]]; result no_swap_active $?
+  eq no_swap_active "$(vmssh 'swapon --show' 2>/dev/null)" ''
   vmssh 'test ! -e /swap.img && ! grep -q swap /etc/fstab'; result no_swap_file_or_fstab_entry $?
-  [[ "$(vmssh 'timedatectl show -p Timezone --value')" == Etc/UTC ]]; result timezone $?
-  [[ "$(vmssh 'findmnt -no SOURCE / | xargs lsblk -no PKNAME')" =~ ^nvme[01]n1$ ]]; result root_on_an_nvme_disk $?
+  eq timezone "$(vmssh 'timedatectl show -p Timezone --value')" Etc/UTC
+  root_disk="$(vmssh 'findmnt -no SOURCE / | xargs lsblk -no PKNAME')"
+  ok_if root_on_an_nvme_disk grep -Eq '^nvme[01]n1$' <<<"${root_disk}"
   # the OS went to the disk whose serial matched, not by name: root must be on the OS-serial disk
   vmssh "udevadm info --query=property --name=/dev/\$(findmnt -no SOURCE / | xargs lsblk -no PKNAME) | grep -q '^ID_SERIAL=${OS_ID}\$'"; result root_disk_carries_the_os_serial $?
   vmssh 'sudo systemctl is-system-running --wait' >"${W}/system-state.txt" 2>&1; cat "${W}/system-state.txt" >&2
   vmssh 'sudo ssh -V' >/dev/null 2>&1; true
   # SSH: password authentication is refused
   ssh -p "${SSH_PORT}" -o PreferredAuthentications=password -o PubkeyAuthentication=no -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR admin@127.0.0.1 true >/dev/null 2>&1
-  [[ $? -ne 0 ]]; result password_ssh_refused $?
+  pw_rc=$?; eq password_ssh_refused "$([[ ${pw_rc} -ne 0 ]] && echo refused)" refused
   # secrets left behind by the installer (hash, token shapes) in logs and cloud-init state
   vmssh "sudo grep -r -l -F '\$6\$fixturesalt' /var/log /var/lib/cloud /etc/cloud /run/cloud-init 2>/dev/null" >"${W}/secret-files.txt" 2>&1
   if [[ -s "${W}/secret-files.txt" ]]; then say "password hash found in: $(tr '\n' ' ' <"${W}/secret-files.txt")"; result installer_leaves_no_password_hash 1; else result installer_leaves_no_password_hash 0; fi
@@ -145,8 +149,8 @@ s_negative() { # a seed whose OS serial matches no disk must abort BEFORE any di
   local b_os b_data; b_os="$(disk_raw_sum "${W}/os.qcow2")"; b_data="$(disk_raw_sum "${W}/data.qcow2")"
   run_installer "${W}/seed/nocloud-seed.iso" "${W}/negative-serial.log"
   grep -a -q "found 0 and 1: aborting before any disk is touched" "${W}/negative-serial.log"; result guard_message_seen_missing_os_disk $?
-  [[ "$(disk_raw_sum "${W}/os.qcow2")" == "${b_os}" ]]; result os_disk_byte_identical_after_abort $?
-  [[ "$(disk_raw_sum "${W}/data.qcow2")" == "${b_data}" ]]; result data_disk_byte_identical_after_abort $?
+  eq os_disk_byte_identical_after_abort "$(disk_raw_sum "${W}/os.qcow2")" "${b_os}"
+  eq data_disk_byte_identical_after_abort "$(disk_raw_sum "${W}/data.qcow2")" "${b_data}"
   # ambiguous: the data serial equals the stale disk's serial scheme is covered by unit tests; here OS and data swapped must not erase the data disk
   stage_site "${DATA_ID}" "${OS_ID}"; build_seed
   run_installer "${W}/seed/nocloud-seed.iso" "${W}/swapped-serial.log"
@@ -171,13 +175,13 @@ s_reinstall() { # install, create data on the data disk with node-setup 00, rein
   # reinstall the OS onto the same disks
   local before_layout; before_layout="$(disk_raw_sum "${W}/data.qcow2")"
   run_installer "${W}/seed/nocloud-seed.iso" "${W}/reinstall-serial.log"
-  [[ "$(disk_raw_sum "${W}/data.qcow2")" == "${before_layout}" ]]; result data_disk_byte_identical_after_os_reinstall $?
+  eq data_disk_byte_identical_after_os_reinstall "$(disk_raw_sum "${W}/data.qcow2")" "${before_layout}"
   boot_installed || { result reinstall_vm_boots 1; return 1; }
   scp -q -i "${W}/key" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${W}/np.tgz" admin@127.0.0.1:/tmp/np.tgz
   vmssh 'rm -rf /tmp/np && mkdir /tmp/np && tar -xzf /tmp/np.tgz -C /tmp/np'
   vmssh "sudo DATA_DISK_SERIAL='${DATA_ID}' bash /tmp/np/targets/ubuntu-server-26.04/node-setup/00-data-disk.sh" >"${W}/data-disk-2.txt" 2>&1; result node_setup_00_after_reinstall $?
   grep -q "Layout already present" "${W}/data-disk-2.txt"; result reinstall_recognises_the_layout_no_repartition $?
-  [[ "$(vmssh 'cat /var/lib/persistent/MARKER')" == precious ]]; result data_survived_the_os_reinstall $?
+  eq data_survived_the_os_reinstall "$(vmssh 'cat /var/lib/persistent/MARKER')" precious
   stop_vm
 }
 
