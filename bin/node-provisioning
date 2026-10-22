@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# node-provisioning: render and validate an autoinstall NoCloud seed, build it into an image,
+# and run the node-setup scripts. See README.md and SECURITY.md before building a seed.
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+NP_ROOT="$(cd "$(dirname "${SELF}")/.." && pwd)"
+NP_LIB="${NP_ROOT}/lib"
+: "${NP_TARGET:=ubuntu-server-26.04}"
+: "${NP_TARGET_DIR:=${NP_ROOT}/targets/${NP_TARGET}}"   # NP_TARGET_DIR: test hook
+export NP_ROOT NP_LIB NP_TARGET NP_TARGET_DIR
+
+# shellcheck source=lib/log.sh
+source "${NP_LIB}/log.sh"
+# shellcheck source=lib/config.sh
+source "${NP_LIB}/config.sh"
+# shellcheck source=lib/render.sh
+source "${NP_LIB}/render.sh"
+# shellcheck source=lib/seed.sh
+source "${NP_LIB}/seed.sh"
+trap np_cleanup EXIT
+umask 077
+
+usage() {
+  cat <<'USAGE'
+Usage: node-provisioning <command> [options]
+
+  render      --site DIR --node NAME --out DIR     write user-data and meta-data (mode 0600)
+  validate    --site DIR --node NAME [--strict]    render to a scratch directory and validate everything
+  build-seed  --site DIR --node NAME --format iso|img|floppy --out DIR
+  node-setup  [--site DIR --node NAME] [--step preflight|setup|all]
+  check-hygiene [--site DIR]                       scan this repository for identifying values
+  version
+
+WARNING: a built seed erases disks when used and contains credentials. Read SECURITY.md.
+USAGE
+}
+
+cmd="${1:-}"
+if [[ -z "${cmd}" ]]; then usage; exit 2; fi
+shift
+SITE=""; NODE=""; OUT=""; FORMAT=""; STEP="all"; NP_STRICT=0; scratch=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --site)   SITE="${2:?--site needs a value}"; shift 2 ;;
+    --node)   NODE="${2:?--node needs a value}"; shift 2 ;;
+    --out)    OUT="${2:?--out needs a value}"; shift 2 ;;
+    --format) FORMAT="${2:?--format needs a value}"; shift 2 ;;
+    --step)   STEP="${2:?--step needs a value}"; shift 2 ;;
+    --strict) NP_STRICT=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) np_die "unknown option: $1" ;;
+  esac
+done
+export NP_STRICT
+
+need() { local v; for v in "$@"; do [[ -n "${!v}" ]] || np_die "missing required option --${v,,}"; done; }
+
+case "${cmd}" in
+  version) cat "${NP_ROOT}/VERSION" ;;
+  render)
+    need SITE NODE OUT
+    np_prepare "${SITE}" "${NODE}"; np_collect_secrets
+    np_render_seed "${OUT}" ;;
+  validate)
+    need SITE NODE
+    np_prepare "${SITE}" "${NODE}"; np_collect_secrets
+    np_mktemp_dir scratch
+    np_render_seed "${scratch}"; np_validate_seed "${scratch}" "${NP_STRICT}"
+    np_ok "validation passed" ;;
+  build-seed)
+    need SITE NODE FORMAT OUT
+    np_prepare "${SITE}" "${NODE}"; np_collect_secrets
+    np_build_seed "${FORMAT}" "${OUT}" ;;
+  node-setup)
+    if [[ -n "${SITE}" ]]; then
+      need NODE
+      np_prepare "${SITE}" "${NODE}"
+      for k in "${!CFG[@]}"; do [[ "${NP_SECRET[${k}]}" == yes ]] || export "${k}=${CFG[${k}]}"; done
+    fi
+    exec bash "${NP_TARGET_DIR}/node-setup/run.sh" "${STEP}" ;;
+  check-hygiene)
+    exec bash "${NP_ROOT}/scripts/check-public-hygiene.sh" ${SITE:+--site "${SITE}"} ;;
+  *) usage; exit 2 ;;
+esac

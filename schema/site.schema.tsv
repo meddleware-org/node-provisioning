@@ -1,0 +1,35 @@
+# site.schema.tsv: site-wide keys (site.env). Columns: key | type | required | default | secret | description
+# Types: host ipv4 cidr4 serial user size int bool text path enum:a,b list:<type> tz version
+## identity and installer
+ADMIN_USER	user	yes	-	no	Administrator account created by the installer (also used for sudoers).
+AUTHORIZED_KEYS_FILE	path	yes	-	no	File with the administrator's SSH public keys (public but identifying: keep in the site).
+LOCALE	text	no	en_US.UTF-8	no	Installer locale.
+KEYBOARD_LAYOUT	text	no	us	no	Keyboard layout.
+KEYBOARD_VARIANT	text	no	-	no	Keyboard variant (empty for none).
+SOURCE_ID	text	no	ubuntu-server-minimal	no	Installer source id.
+UPDATES	enum:security,all	no	security	no	Installer update policy.
+EFI_SIZE	size	no	1G	no	EFI system partition size on the OS disk.
+INSTALLER_NETWORK_FILE	path	yes	-	no	Site YAML fragment: the installer's network section.
+NETPLAN_FILE	path	yes	-	no	Site YAML fragment: the installed system's netplan.
+NETPLAN_FILE_NAME	text	no	10-site.yaml	no	File name under /etc/netplan.
+WAIT_ONLINE_INTERFACES	list:text	yes	-	no	Interfaces systemd-networkd-wait-online waits for.
+## firewall, kubernetes, runtime (node-setup)
+LAN_CIDR	cidr4	yes	-	no	Network allowed to reach administrative ports (no default: a wrong default opens or locks).
+POD_CIDR	cidr4	yes	-	no	Pod network allowed to reach the host; must equal the cluster's podSubnet.
+KUBE_VERSION	version	yes	-	no	Pinned kubeadm/kubelet/kubectl version.
+KUBE_MINOR	text	yes	-	no	Kubernetes minor (repository channel, for example v1.NN), must match KUBE_VERSION.
+PAUSE_IMAGE	text	yes	-	no	Pause image the container runtime pins.
+## data disk layout
+ETCD_SIZE	size	no	50G	no	etcd partition on the data disk.
+LONGHORN_SIZE	size	no	150G	no	Longhorn fast-tier partition.
+REGISTRY_UID	int	no	1000	no	Owner uid of the persistent registry directory.
+REGISTRY_GID	int	no	1000	no	Owner gid of the persistent registry directory.
+## ubuntu pro
+PRO_ENABLE	list:text	no	esm-infra,esm-apps,livepatch	no	Pro services to enable.
+PRO_DISABLE	list:text	no	landscape,anbox-cloud	no	Pro services to disable.
+## preflight expectations (TRANSITIONAL: reworked with 01-preflight)
+EXPECT_ARCH	text	no	x86_64	no	Required machine architecture.
+EXPECT_KERNEL_PREFIX	text	no	-	no	Warn when the running kernel does not start with this.
+EXPECT_DISKS	list:text	no	-	no	Block devices (names) that must exist.
+EXPECT_INTERFACES	list:text	no	-	no	Network interfaces that must exist.
+EXPECT_BONDS	list:text	no	-	no	Bonds expected after netplan (warning only).

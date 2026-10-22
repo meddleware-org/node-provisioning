@@ -1,0 +1,3 @@
+# Release tarballs are built with `git archive`: keep CI plumbing out of them.
+/.github export-ignore
+/.gitattributes export-ignore

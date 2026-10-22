@@ -1,0 +1,8 @@
+# One entry per line: <kind>|<exact value>|<reason>. The hygiene check refuses everything it
+# recognises (non-documentation IPv4, crypt hashes, SSH keys, Ubuntu Pro tokens) unless listed here.
+token|C1111111111111111111111111|fake Ubuntu Pro token used by the render tests (schema-valid, not a real token)
+ipv4|127.0.0.1|loopback (telemetry hosts block)
+ipv4|198.18.0.0|example pod network (RFC 2544 benchmarking range)
+sshkey|ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGzHXsxssVSMveNHfSGddEAunpJaxwyErkZsPTvGhgvO|throwaway public key used by examples and tests
+hash|$6$fixturesalt0000$lQtobrhkLdq12cYEDI2CkGby5YM.eAWLLztyfmoxn.aSaNljhNhsq3eEDBL/TlEOMTNZWWULcpmF05JPLiIF5/|deterministic fixture hash (password is not a secret: fixture only)
+term|meddleware-org|public GitHub organisation name

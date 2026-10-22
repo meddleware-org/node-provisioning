@@ -1,0 +1,22 @@
+# Generated seeds and build output are credential-bearing: never commit them.
+/build/
+/out/
+*.iso
+*.img
+*.qcow2
+# Site data belongs in the operator's own (private) location, never here.
+/site/
+/sites/
+password-hash
+*.token
+*.hash
+authorized_keys
+.env
+.env.*
+!examples/**/*.env
+# Test scratch
+/tests/.tmp/
+/tests/vm/.work/
+__pycache__/
+*.pyc
+/.cache/

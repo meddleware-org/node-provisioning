@@ -1,0 +1,260 @@
+#cloud-config
+# Ubuntu Server 26.04 Subiquity autoinstall configuration (template).
+#
+# Rendered by node-provisioning: every marker delimited by a pair of at-signs is filled from the
+# site and node configuration, and every include marker is replaced by a site-owned file.
+# Do not edit a rendered copy; change the site configuration and render again.
+autoinstall:
+  version: 1
+
+  source:
+    id: ubuntu-server-minimal
+
+  # Disable Subiquity installer event reporting to Canonical.
+  # Without this, every install phase is sent to Canonical's telemetry service.
+  reporting: {}
+
+  locale: en_US.UTF-8
+
+  keyboard:
+    layout: us
+    variant: ""
+
+  # Network used while the installer runs (for example when the switch port carries a tagged VLAN).
+  network:
+    version: 2
+    renderer: networkd
+    ethernets:
+      enp1s0:
+        dhcp4: false
+        dhcp6: false
+    vlans:
+      enp1s0.100:
+        id: 100
+        link: enp1s0
+        dhcp4: false
+        dhcp6: false
+        addresses:
+          - 192.0.2.10/24
+        routes:
+          - to: default
+            via: 192.0.2.1
+        nameservers:
+          addresses:
+            - 192.0.2.53
+
+  storage:
+    config:
+      # ── OS disk: boot + root ──────────────────────────────────────────────
+      - type: disk
+        id: disk0
+        path: /dev/nvme0n1
+        ptable: gpt
+        wipe: superblock
+        preserve: false
+
+      - type: partition
+        id: disk0-efi
+        device: disk0
+        size: 1G
+        flag: boot
+        grub_device: true
+
+      - type: format
+        id: disk0-efi-fs
+        volume: disk0-efi
+        fstype: fat32
+        label: ESP
+
+      - type: mount
+        id: disk0-efi-mnt
+        device: disk0-efi-fs
+        path: /boot/efi
+
+      - type: partition
+        id: disk0-swap
+        device: disk0
+        size: 4G
+
+      - type: format
+        id: disk0-swap-fs
+        volume: disk0-swap
+        fstype: swap
+        label: swap
+
+      - type: mount
+        id: disk0-swap-mnt
+        device: disk0-swap-fs
+        path: ""
+
+      - type: partition
+        id: disk0-root
+        device: disk0
+        size: -1
+
+      - type: format
+        id: disk0-root-fs
+        volume: disk0-root
+        fstype: ext4
+        label: root
+
+      - type: mount
+        id: disk0-root-mnt
+        device: disk0-root-fs
+        path: /
+
+      # ── DATA DISK is intentionally NOT managed here ───────────────────────
+      # The installer manages ONLY the OS disk above, so wiping and
+      # re-installing the OS can NEVER destroy stateful data. The data disk
+      # (etcd + Longhorn fast tier + /var/lib/persistent) is provisioned
+      # idempotently on first boot by scripts/00-data-disk.sh — it creates the
+      # labelled partitions only if they do not already exist, then mounts them
+      # by LABEL via /etc/fstab. On a re-install the existing labelled partitions
+      # are detected and preserved (data survives). See docs/node-setup.md.
+
+  identity:
+    hostname: node1
+    username: admin
+    # Generate: python3 -c "import crypt; print(crypt.crypt('PASSWORD', crypt.mksalt(crypt.METHOD_SHA512)))"
+    # or:       echo 'PASSWORD' | mkpasswd --method=SHA-512 --stdin
+    password: "$6$fixturesalt0000$lQtobrhkLdq12cYEDI2CkGby5YM.eAWLLztyfmoxn.aSaNljhNhsq3eEDBL/TlEOMTNZWWULcpmF05JPLiIF5/"
+
+  ssh:
+    install-server: true
+    authorized-keys:
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGzHXsxssVSMveNHfSGddEAunpJaxwyErkZsPTvGhgvO fixture@example.invalid"
+    allow-pw: false
+
+  packages:
+    # apt-transport-https was a transitional no-op package since Ubuntu 22.04
+    # (apt handles HTTPS natively). It was removed from Ubuntu 26.04 repositories.
+    # net-tools (ifconfig/netstat) was removed from Ubuntu 26.04; use iproute2
+    # (ip/ss) which is installed by default.
+    - ca-certificates
+    - curl
+    - gnupg
+    - lsb-release
+    # NOTE: git, vim, htop, ethtool omitted — not in the ubuntu-server-minimal squashfs
+    # so subiquity would need to download them, but the installer network (a VLAN) is
+    # not yet up during the packages phase. Installed by node-setup on the live system.
+    # NOTE: iotop-c omitted — causes errors during autoinstall packages phase.
+    # Installed by 04-kubetools.sh on the live system instead.
+    # NOTE: bridge-utils and ifenslave intentionally omitted — Cilium uses no Linux
+    # bridge and bonding is handled by netplan/networkd, so neither is needed.
+    # Longhorn RequiredPackages (verified on the live node CRD):
+    #   dmsetup, nfs-common, open-iscsi, cryptsetup
+    # nfs-common and open-iscsi are intentionally absent here — their post-install
+    # scripts try to start rpcbind/iscsid, which fails in any chroot environment
+    # (packages phase and curtin in-target both fail with exit 100). They are
+    # installed by 04-kubetools.sh on the live running system instead.
+    - cryptsetup
+    - dmsetup
+    - util-linux
+    # NOTE: linux-modules-extra-generic omitted — may not exist on Ubuntu 26.04 testnet.
+    # Kernel modules (overlay, br_netfilter, dm_crypt) are loaded by 02-kernel.sh post-boot.
+    - unattended-upgrades
+    # NOTE: socat omitted — not in the ubuntu-server-minimal squashfs, requires internet
+    # download during the installer packages phase when VLAN 200 may not yet be up.
+    # Installed by node-setup on the live system (kubeadm preflight requires it).
+
+  late-commands:
+    # Set -e and use a wrapper to catch errors without aborting early.
+    # (Subiquity runs late-commands via bash, so set -e applies.)
+    # Lock down sudo — passwordless for the administrator.
+    - "mkdir -p /target/etc/sudoers.d && echo 'admin ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/admin && chmod 440 /target/etc/sudoers.d/admin"
+    # kubeadm expects /var/lib/etcd owned by root with mode 700
+    - "test -d /target/var/lib/etcd && chmod 700 /target/var/lib/etcd || true"
+    # Disable swap in /etc/fstab — Kubernetes requires swap off
+    - "sed -i '/\\bswap\\b/d' /target/etc/fstab || true"
+    # ── Telemetry / phone-home hardening ─────────────────────────────────────
+    # Apport: crash reporter that uploads crash data to Canonical
+    - "sed -i 's/^enabled=1/enabled=0/' /target/etc/default/apport || true"
+    # MOTD news: contacts motd.ubuntu.com on every SSH login
+    - "systemctl disable --root=/target motd-news.timer 2>/dev/null || true"
+    # Popularity Contest: reports installed package names to Canonical
+    - "echo 'PARTICIPATE=no' > /target/etc/popularity-contest.conf"
+    # ubuntu-advantage/Pro: disable apt news and MOTD integration
+    - "sed -i 's/^apt_news: true/apt_news: false/' /target/etc/ubuntu-advantage/uaclient.conf 2>/dev/null || true"
+    # Block known telemetry domains at the network level via /etc/hosts.
+    # This is belt-and-suspenders alongside per-app disabling — catches any
+    # service that ignores its own config flag.
+    - |
+      cat >> /target/etc/hosts <<'TELEMETRY_BLOCK'
+
+      # Telemetry / analytics endpoint blocks (added by autoinstall)
+      127.0.0.1 motd.ubuntu.com
+      127.0.0.1 metrics.ubuntu.com
+      127.0.0.1 report.ubuntu.com
+      127.0.0.1 stats.grafana.com
+      127.0.0.1 analytics.longhornio.com
+      127.0.0.1 usage.juicefs.com
+      TELEMETRY_BLOCK
+    # Apply netplan configuration (network bonding + VLANs + static IP).
+    # This runs during autoinstall (late-commands), so networking is ready on first boot.
+    - |
+      set +e
+      mkdir -p /target/etc/netplan
+      cat > /target/etc/netplan/10-site.yaml <<'NETPLAN'
+      # Netplan for the installed system: an LACP bond carrying one tagged VLAN.
+      network:
+        version: 2
+        renderer: networkd
+        ethernets:
+          enp1s0:
+            dhcp4: false
+            dhcp6: false
+          enp2s0:
+            dhcp4: false
+            dhcp6: false
+        bonds:
+          bond0:
+            interfaces:
+              - enp1s0
+              - enp2s0
+            parameters:
+              mode: 802.3ad
+              lacp-rate: fast
+              transmit-hash-policy: layer3+4
+              mii-monitor-interval: 100
+        vlans:
+          bond0.100:
+            id: 100
+            link: bond0
+            dhcp4: false
+            dhcp6: false
+            addresses:
+              - "192.0.2.10/24"
+            routes:
+              - to: default
+                via: 192.0.2.1
+            nameservers:
+              addresses:
+                - 192.0.2.53
+              search:
+                - example.invalid
+      NETPLAN
+      rm -f /target/etc/netplan/00-installer-config.yaml /target/etc/netplan/00-installer-config-wifi.yaml
+      test -f /target/etc/netplan/10-site.yaml && chmod 600 /target/etc/netplan/10-site.yaml
+      # Scope systemd-networkd-wait-online to the management interface(s) only. Without this it
+      # blocks on interfaces that never come up (no carrier, DHCP on an inactive VLAN).
+      # No explicit timeout: the service waits without a deadline, consistent with
+      # cloud-init-network.service.
+      mkdir -p /target/etc/systemd/system/systemd-networkd-wait-online.service.d
+      cat > /target/etc/systemd/system/systemd-networkd-wait-online.service.d/10-scope.conf <<'OVERRIDE'
+      [Service]
+      ExecStart=
+      ExecStart=/usr/lib/systemd/systemd-networkd-wait-online --interface=bond0.100
+      OVERRIDE
+      set -e
+
+  updates: security
+
+  # ── Ubuntu Pro ──────────────────────────────────────────────────────────────
+  # Attaches the node to Ubuntu Pro during autoinstall, enabling ESM, Livepatch,
+  # and other subscription services without requiring a post-boot manual step.
+  #
+  # Provide the token at build time through UBUNTU_PRO_TOKEN_FILE (or the UBUNTU_PRO_TOKEN
+  # environment variable). Without a token this block is removed entirely and the installer
+  # runs without any Pro attachment.
+  ubuntu-pro:
+    token: "C1111111111111111111111111"

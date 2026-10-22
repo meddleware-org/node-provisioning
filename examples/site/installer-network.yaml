@@ -1,0 +1,22 @@
+# Network used while the installer runs (for example when the switch port carries a tagged VLAN).
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp1s0:
+      dhcp4: false
+      dhcp6: false
+  vlans:
+    enp1s0.100:
+      id: 100
+      link: enp1s0
+      dhcp4: false
+      dhcp6: false
+      addresses:
+        - 192.0.2.10/24
+      routes:
+        - to: default
+          via: 192.0.2.1
+      nameservers:
+        addresses:
+          - 192.0.2.53

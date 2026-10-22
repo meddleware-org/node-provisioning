@@ -1,0 +1,9 @@
+# node.schema.tsv: per-node keys (nodes/<name>.env). Columns: key | type | required | default | secret | description
+# Types: host ipv4 cidr4 serial user size int bool text path enum:a,b list:<type> tz version
+# "required" = yes: the build fails if absent. "secret" = yes: the value is never printed or logged.
+HOSTNAME	host	yes	-	no	Hostname of the node (identity.hostname and meta-data local-hostname).
+NODE_IP	ipv4	yes	-	no	Static management address; must equal an address in the site's network fragments.
+OS_DISK_PATH	text	yes	-	no	TRANSITIONAL (Phase A): device path of the disk the installer erases. Replaced by OS_DISK_SERIAL.
+INSTANCE_ID	text	no	<hostname>-<12 hex of sha256(user-data)>	no	cloud-init instance-id; changing it forces a fresh instance. Environment override allowed.
+PASSWORD_HASH_FILE	path	no	~/.config/node-provisioning/<site>/<node>/password-hash	yes	File holding the crypt password hash (mode <= 0600, caller-owned).
+UBUNTU_PRO_TOKEN_FILE	path	no	-	yes	File holding an Ubuntu Pro token; absent means no Pro attachment. UBUNTU_PRO_TOKEN in the environment is also accepted.
