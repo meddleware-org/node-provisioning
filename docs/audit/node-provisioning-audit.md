@@ -24,10 +24,10 @@ site's values. The extraction changed how destructive decisions are made: disks 
 default, the installer aborts before touching storage when the identity is wrong, persistent data is recognised only on
 the named disk, and every failure of a security-establishing step is fatal with a fail-safe where it matters.
 
-Eighteen findings are recorded. Sixteen are resolved with hermetic evidence (tests named below); the VM matrix and the
-first hardware run are the remaining evidence gates. One finding (F15) is deferred behind a maintainer action: package
-repository key fingerprints must be verified out of band before they are pinned. One (F18) is an accepted design
-risk awaiting a maintainer decision.
+Twenty-one findings are recorded. Nineteen are resolved, with hermetic evidence (tests named below) and, where the behaviour
+needs a real installer, VM evidence (2026-10-22/23, Ubuntu Server 26.04.1). The first hardware run is the remaining
+evidence gate. One finding (F15) is deferred behind a maintainer action: package repository key fingerprints must be
+verified out of band before they are pinned. One (F18) is an accepted design risk awaiting a maintainer decision.
 
 ## Threat model / trust boundaries
 
@@ -58,38 +58,38 @@ Subiquity and cloud-init projects themselves (their documented behaviour is reco
 
 ### F1 — The OS disk was selected by device path
 
-**Severity:** High   **Disposition:** RESOLVED (hermetic); VM evidence pending (gate pre-testnet).
+**Severity:** High   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
 The old template used `path: /dev/nvme0n1`. NVMe names are not stable across boots: on the reference node the OS
 had landed on the other NVMe than the template named. Now the disk is `match: {serial: ...}`; the type forbids glob
 characters; an `early-commands` guard (POSIX `sh`) aborts before storage unless exactly one disk carries the OS serial and
 exactly one the data serial. **Evidence:** `tests/guard.test.sh` (13 cases: exact match, device-name independence, missing,
 duplicate, near-miss, none, loop devices ignored, message names counts not serials), `tests/validator.test.sh` (path and
-glob rejected), `tests/validate-fail.test.sh` (missing, glob, identical, too-short serials).
+glob rejected), `tests/validate-fail.test.sh` (missing, glob, identical, too-short serials). **VM:** the `install` scenario installed onto the disk whose serial matched (root on the OS-serial disk, whatever its device name); `negative` (an OS serial that matches no disk) aborted with the guard's message and left the OS and data disks identical (`qemu-img compare`).
 
 ### F2 — The data disk was auto-detected as the largest non-root disk
 
-**Severity:** High   **Disposition:** RESOLVED (hermetic); VM evidence pending.
+**Severity:** High   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
 `00-data-disk.sh` chose "the largest whole disk that is not the root disk". On the reference node that was a 3.6 TB
 RAID volume, not the intended NVMe, and the cluster's etcd ended up on a rotational disk. The disk is now selected only by
 `DATA_DISK_SERIAL` (required, exactly one match, root disk refused). **Evidence:** `tests/data-disk.test.sh`
-(`serial_absent`, `serial_duplicate`, `serial_is_root_disk`, `serial_required`, `serial_glob_rejected`).
+(`serial_absent`, `serial_duplicate`, `serial_is_root_disk`, `serial_required`, `serial_glob_rejected`). **VM:** the `setup` scenario provisioned only the disk with the data serial.
 
 ### F3 — Labels from an earlier install could hijack provisioning and mounts
 
-**Severity:** High   **Disposition:** RESOLVED (hermetic); VM evidence pending.
+**Severity:** High   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
 The sentinel was `blkid -L persistent` anywhere, and fstab used `LABEL=`. A leftover disk with the same labels would skip
 provisioning of the real data disk and be mounted instead. The script now inspects only partitions of the selected disk,
 mounts by UUID, warns about the same labels elsewhere and refuses to overwrite an fstab entry that maps a mount point to
 another source. **Evidence:** `data-disk.test.sh`: `stale_hdd_blank_data`, `stale_hdd_layout_present`, `fstab_conflict`,
-`wipe_never_other_disk`.
+`wipe_never_other_disk`. **VM:** with stale labelled partitions on a third disk, `setup` and `reinstall` reported them, provisioned and mounted the data-serial disk by UUID, and mounted nothing from the stale disk; the OS reinstall left the data disk byte-identical, the layout was recognised again without repartitioning, and a marker file survived.
 
 ### F4 — A failing multi-line installer command still succeeded
 
-**Severity:** Medium   **Disposition:** RESOLVED (hermetic); VM evidence pending.
+**Severity:** Medium   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
 Installer commands run under `sh -c`; a block reports only its last command's status, and the netplan block ended with
 `set -e` (exit 0). A failed write would have produced a node without its network configuration. Both multi-line commands now
 start with `set -eu`. **Evidence:** `tests/late-commands.test.sh` (no `set +e`, every multi-line command starts with
-`set -eu`, the netplan command is executed against a scratch root and a failing write exits non-zero).
+`set -eu`, the netplan command is executed against a scratch root and a failing write exits non-zero). **VM:** the installed system has the site's netplan at mode 600 and the telemetry hosts block.
 
 ### F5 — The installed network configuration contained an invalid key and was never validated
 
@@ -101,12 +101,12 @@ tooling never ran a validator. `validate` now runs `netplan generate` on both fr
 
 ### F6 — The hardening described in the docs was never applied
 
-**Severity:** Medium   **Disposition:** RESOLVED (hermetic); VM evidence pending.
+**Severity:** Medium   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
 A cloud-init file described SSH hardening, sysctl and unattended-upgrade policy, but no flow consumed it, although the
 runbooks said the installer applied them. `08-hardening.sh` now applies them, validates `sshd -t` before activating and rolls
 back on failure, writes a drop-in instead of overwriting the package's unattended-upgrades file, and uses
 `KbdInteractiveAuthentication`. `ntp:` was not carried over (it would replace chrony's authenticated time with plain NTP).
-**Evidence:** `tests/hardening.test.sh` (20 cases including rollback and idempotence).
+**Evidence:** `tests/hardening.test.sh` (23 cases including rollback, idempotence and the installer-copy redaction). **VM:** after the real node setup `sshd -T` reports key-only authentication, no root login and no TCP forwarding; `kernel.kptr_restrict` is 2; the unattended-upgrades policy is installed; SSH still works after the firewall and hardening.
 
 ### F7 — The Ubuntu Pro token was substituted into text by `sed` and written three times
 
@@ -135,12 +135,12 @@ assistant session during the extraction is treated as exposed: a new password is
 
 ### F10 — A firewall script failure left the node open
 
-**Severity:** High   **Disposition:** RESOLVED (hermetic); VM evidence pending.
+**Severity:** High   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
 `ufw --force reset` disables the firewall; any later failure left the node unprotected, and the runner only warned. The
 script now installs an `ERR` trap that allows SSH and enables the firewall with the rules staged so far, validates both
 CIDRs before touching anything, asserts SSH is allowed in the active ruleset, and is fatal in the runner. **Evidence:**
 `tests/ufw.test.sh` (16 cases: order, failure at a rule, failure of the SSH rule itself, validation, open-anywhere switch),
-`tests/run-order.test.sh`.
+`tests/run-order.test.sh`. **VM:** the real setup left the firewall active with SSH allowed. (Failure injection is covered by the container suite only.)
 
 ### F11 — Preflight checked names, a removed flag and an unrelated disk
 
@@ -158,10 +158,10 @@ duplicated, never suppressed), validated as host names, and the third-party endp
 
 ### F13 — A swap partition was created and then removed from fstab
 
-**Severity:** Low   **Disposition:** RESOLVED (hermetic); VM evidence pending.
+**Severity:** Low   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
 The partition remained and curtin would create a swap file when no swap is defined. The partition is gone and
 `storage: swap: size: 0` is set (the key's location was checked against the installer reference). **Evidence:** the validator
-rejects any swap partition or non-zero swap size (`tests/validator.test.sh`); VM: `swapon --show` empty after reboot.
+rejects any swap partition or non-zero swap size (`tests/validator.test.sh`). **VM:** `swapon --show` is empty after reboot, there is no `/swap.img` and no swap entry in fstab (also after the node setup).
 
 ### F14 — Misleading reporting comment, no explicit timezone, silent offline install
 
@@ -201,34 +201,62 @@ disproved in the VM matrix).
 The installer grants the administrator passwordless sudo, so a compromised SSH key is root. It is the behaviour the platform
 has today; whether it should become a site choice is a maintainer decision.
 
+### F19 — The installer keeps a copy of the seed's user-data, including credentials
+
+**Severity:** Low   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
+Found by the VM matrix: Subiquity writes `/var/log/installer/autoinstall-user-data` on the installed system, re-serialised as
+YAML with **unquoted** values, so it holds the password hash and any Ubuntu Pro token. The file is mode 0400 root-only (the
+directory is `root:adm`, mode 770), so the exposure is no wider than `/etc/shadow` for the hash, but a vendor token has no
+business in a log. `08-hardening.sh` redacts every `password:` and `token:` value in place (quoted or not), keeps the mode, and
+is idempotent. **Evidence:** `tests/hardening.test.sh` (quoted and unquoted forms, mode kept, idempotent); VM `scrub`: the hash was
+present before, absent from every file under `/var`, `/etc`, `/run`, `/home` and `/root` after, and a second run found nothing.
+
+### F20 — The installer rejects reserved administrator names; the tool accepted them
+
+**Severity:** Medium   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
+Found by the first VM install: the example site used `admin`, which the installer refuses ("Username is reserved by the system")
+after loading the configuration, so an operator would find out on the machine. The tool now rejects a built-in list of common
+reserved names always and the installer's own `reserved-usernames` file (119 names, pinned by commit and checksum next to the
+schema, fetched not vendored) when it has been fetched. **Evidence:** `tests/validate-fail.test.sh` (`admin`, `root`, `sshd`,
+`operator`, and a name that is only in the pinned list); the examples and the VM site use a non-reserved name and install.
+
+### F21 — Preflight crashed when optional expectations were not configured
+
+**Severity:** Low   **Disposition:** RESOLVED (hermetic and VM, 2026-10-22/23).
+`01-preflight.sh` ran under `set -u` and referenced `EXPECT_BONDS` and `EXPECT_INTERFACES` unconditionally, so a site that omitted
+them got "unbound variable". Hermetic tests had always set them. Found by the VM `scrub` scenario; both default to empty now.
+**Evidence:** `tests/preflight.test.sh` (`optional_expectations_unset`); VM `scrub`: preflight passes.
+
 ---
 
 ## Section A — Invariant verification matrix
 
 | # | Invariant | Enforced at | Proven by | Status |
 | --- | --- | --- | --- | --- |
-| I1 | Disks are selected by exact serial; no default; exactly one match | `schema/node.schema.tsv`, template `match.serial`, `early-commands` guard, `00-data-disk.sh`, `01-preflight.sh` | `guard`, `validator`, `validate-fail`, `data-disk`, `preflight` tests | HOLDS (VM pending) |
-| I2 | The installer aborts before storage when identity is wrong | template `early-commands` | `guard.test.sh`; VM negative scenario | HOLDS (hermetic); VM pending |
-| I3 | Persistent data is recognised only on the named disk; foreign labels ignored; UUID mounts | `00-data-disk.sh` | `data-disk.test.sh` | HOLDS (VM pending) |
+| I1 | Disks are selected by exact serial; no default; exactly one match | `schema/node.schema.tsv`, template `match.serial`, `early-commands` guard, `00-data-disk.sh`, `01-preflight.sh` | `guard`, `validator`, `validate-fail`, `data-disk`, `preflight` tests | HOLDS (hermetic and VM) |
+| I2 | The installer aborts before storage when identity is wrong | template `early-commands` | `guard.test.sh`; VM negative scenario | HOLDS (hermetic and VM) |
+| I3 | Persistent data is recognised only on the named disk; foreign labels ignored; UUID mounts | `00-data-disk.sh` | `data-disk.test.sh` | HOLDS (hermetic and VM) |
 | I4 | Secrets never in argv, logs, errors or tracked files | `lib/seed.sh`, `lib/render.awk` (ENVIRON), error messages | `validate-fail.test.sh` (no secret in output), `hygiene.test.sh` | HOLDS |
 | I5 | Unknown, missing, empty-required, ill-typed input fails the build | `lib/config.sh` | `config.test.sh`, `validate-fail.test.sh` | HOLDS |
 | I6 | Rendered output is schema-valid | `lib/validate.py`, `scripts/fetch-subiquity-schema.sh` | `render.test.sh`; CI fetches the pinned schema | HOLDS |
 | I7 | Same inputs, same bytes | `lib/seed.sh` | `reproducible.test.sh` | HOLDS (same tool versions) |
 | I8 | Setup order and failure semantics | `node-setup/run.sh` | `run-order.test.sh` | HOLDS |
-| I9 | A firewall failure never leaves the node open | `05-ufw.sh` ERR trap | `ufw.test.sh` | HOLDS (VM pending) |
+| I9 | A firewall failure never leaves the node open | `05-ufw.sh` ERR trap | `ufw.test.sh` | HOLDS (hermetic and VM) |
 | I10 | An invalid sshd configuration is never activated | `08-hardening.sh` | `hardening.test.sh` | HOLDS |
-| I11 | The public repository holds no site data | `check-public-hygiene.sh` | `hygiene.test.sh`; run with the site as denylist | HOLDS |
+| I11 | The public repository holds no site data | `check-public-hygiene.sh`, `scan-history.sh` | `hygiene.test.sh`; run with the site as denylist over the tree and every commit | HOLDS |
+| I12 | Administrator names the installer rejects are refused at render time | `lib/config.sh` `np_check_reserved_user` | `validate-fail.test.sh`; VM install | HOLDS (F20) |
+| I13 | The installer's copy of the seed holds no credentials after setup | `08-hardening.sh` | `hardening.test.sh`; VM `scrub` | HOLDS (F19) |
 
 ### Lens categories
 
 | Lens | Category | Status |
 | --- | --- | --- |
 | HOST | Destructive-target identity | HOLDS (F1, F2) |
-| HOST | Data preservation | HOLDS (F3); VM reinstall pending |
-| HOST | Credential-bearing artefacts | HOLDS (F7, F8, F9); whether installer logs on the target retain secrets is a VM question (OQ3) |
+| HOST | Data preservation | HOLDS (F3), including the VM OS reinstall |
+| HOST | Credential-bearing artefacts | HOLDS (F7, F8, F9); installer logs checked in the VM: only a root-only copy of the seed's user-data held the hash, redacted by `08-hardening.sh` (F19, OQ3) |
 | HOST | Render and validation | HOLDS (F5, F14) |
 | HOST | Fail-closed execution | HOLDS (F4, F10) |
-| HOST | Node hardening | HOLDS in tests (F6); verified on a real install in the VM matrix |
+| HOST | Node hardening | HOLDS (F6); verified on a real install in the VM (`sshd -T`, sysctl, firewall, holds) |
 | HOST | Package-source trust | DEFERRED (F15) |
 | HOST | Reproducibility | HOLDS (F16) |
 | HOST | Distribution and pinning | HOLDS in design and offline tests; first release pending |
@@ -285,7 +313,7 @@ level and actionlint run in CI.
 
 Hermetic: everything above; device commands are stubbed in containers with no network and no devices. Live: the VM matrix
 (`tests/vm/run-vm-test.sh`, manual) and the hardware run. The destructive partitioning path of `00-data-disk.sh` and the
-installer's storage handling are proved only by the VM matrix.
+installer's storage handling are proved by the VM matrix (2026-10-22/23); real device enumeration is proved only on hardware.
 
 ## Section D — Deployment-readiness gates
 
@@ -296,7 +324,7 @@ installer's storage handling are proved only by the VM matrix.
 
 ### pre-testnet
 
-- [ ] VM matrix recorded: serial-matched install, negative aborts with the disks byte-identical, reinstall preserves and re-mounts the data disk, fail-closed late-commands, no swap, key-only SSH, whether installer logs retain secrets (maintainer: the VM run needs the ISO download and local KVM; first run recorded in the re-verification log)
+- [x] VM matrix recorded 2026-10-22/23 (Ubuntu Server 26.04.1, QEMU/KVM): serial-matched install, negative abort with the disks identical, OS reinstall preserves and re-mounts the data disk, real node setup 00-08, no swap, key-only SSH, installer-log secrets (F19) — see the re-verification log
 - [ ] release published, signed, consensus-pinned by the consumer (maintainer: GitHub, registry and settings steps are the maintainer's)
 
 ### pre-mainnet
@@ -314,9 +342,9 @@ installer's storage handling are proved only by the VM matrix.
 
 ## Normative requirements (MUST / MUST NOT)
 
-- **HOST-M1** holds. **HOST-M2** holds (VM reinstall pending). **HOST-M3** holds (mode 0600, deletion is the consumer's `--clean`).
-- **HOST-M4** holds. **HOST-M5** holds. **HOST-M6** holds (VM pending for the installer-level behaviour).
-- **HOST-M7** holds in tests; verified on a real install in the VM matrix. **HOST-M8** does not hold yet (F15).
+- **HOST-M1** holds. **HOST-M2** holds (VM OS reinstall proved). **HOST-M3** holds (mode 0600, deletion is the consumer's `--clean`; the installer's own copy is redacted, F19).
+- **HOST-M4** holds. **HOST-M5** holds. **HOST-M6** holds (installer-level behaviour proved in the VM; failure injection is hermetic).
+- **HOST-M7** holds, verified on a real install in the VM. **HOST-M8** does not hold yet (F15).
 - **HOST-M9** holds. **HOST-M10** holds in design and offline tests (first release pending). **HOST-M11** holds.
 
 ## Implementation suggestions (SHOULD / MAY)
@@ -333,8 +361,9 @@ installer's storage handling are proved only by the VM matrix.
   before the node is rebuilt.
 - **OQ2** — Where do the repository key fingerprints for the container runtime and Kubernetes packages come from, and who
   verifies them out of band? (Gate for F15.)
-- **OQ3** — Do installer logs on the target retain the password hash or the Pro token? Decided by the VM matrix; if they do, a
-  late-command scrubs them and the finding is recorded.
+- **OQ3** — Do installer logs on the target retain the password hash or the Pro token? **Answered 2026-10-22 by the VM matrix:** only
+  the installer's root-only (0400) copy of the seed's user-data does (F19); `08-hardening.sh` redacts it. The Pro token path was not
+  exercised (a fake token would make the installer attempt a real attach); it is the same file and the same redaction.
 - **OQ4** — Should `AllowTcpForwarding` stay disabled by default? It is a site key (`SSH_ALLOW_TCP_FORWARDING`, default false).
 
 ## Risks
@@ -355,3 +384,10 @@ installer's storage handling are proved only by the VM matrix.
 - 2026-10-22 — history scan (`scripts/scan-history.sh`) with the site's own values as the denylist found one real hardware identifier in a
   test sample of the first local commit; it was replaced in all commits (history rewritten before any push) and the scan now reports a clean
   history. The scan is part of the pre-publication checklist.
+- 2026-10-22/23 — VM matrix run on QEMU/KVM with Ubuntu Server 26.04.1 (ISO checksum verified against the GPG-signed
+  `SHA256SUMS`): `probe` (the installer sees `ID_SERIAL` as `<model>_<serial>_<namespace>`), `install`, `setup`, `scrub`,
+  `negative`, `reinstall`; all checks pass in the final runs (`docs/verification.md` says what each proves). Findings F19–F21
+  came from these runs. **Evidence correction:** the first version of the harness compared disks through `qemu-img convert ... -`,
+  which does not write to stdout (it created a stray file and hashed empty input), so the early "disk untouched" results were
+  vacuous; the comparison was replaced by `qemu-img compare` against a pre-operation copy (sanity-checked: identical gives 0, a 4 KiB
+  write gives 1) and every disk-dependent scenario was re-run. The stray file was removed from the tip commit before anything was pushed.

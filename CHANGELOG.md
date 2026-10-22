@@ -17,7 +17,7 @@ First version, extracted from the platform workspace's in-tree OS tooling. Set t
 - Node-setup scripts 00–08 and a runner (`run.sh`) with fixed order and failure semantics; new `08-hardening.sh`.
 - Public-hygiene scan (`scripts/check-public-hygiene.sh`) with a site-derived denylist, a history scanner (`scripts/scan-history.sh`) and a pre-commit hook; release workflow (deterministic
   `git archive` tarball, keyless cosign bundle, GitHub attestation, GitHub Release and OCI publish); a manual QEMU/KVM VM test
-  matrix (`tests/vm/`).
+  matrix (`tests/vm/`: probe, install, setup, scrub, negative, reinstall), run against Ubuntu Server 26.04.1.
 
 ### Security
 
@@ -29,6 +29,8 @@ First version, extracted from the platform workspace's in-tree OS tooling. Set t
   configuration is rolled back before activation.
 - Secrets are read from 0600 files or the environment, never printed, passed in argv or written to tracked files; seeds are mode 0600.
 - Images are byte-reproducible for the same inputs.
+- Administrator names the installer refuses (`admin`, `root`, `operator`, ...) are rejected when the seed is rendered (built-in list always; the installer's own pinned list when fetched).
+- `08-hardening.sh` redacts the password hash and any token in the installer's root-only copy of the seed's user-data.
 
 ### Changed (relative to the in-tree tooling it replaces)
 
