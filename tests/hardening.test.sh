@@ -19,7 +19,8 @@ cat >"${T_TMP}/driver.sh" <<'DRV'
 export PATH="/stubs:${PATH}"
 S=/script/08-hardening.sh
 : >/tmp/calls.log
-mkdir -p /etc/ssh/sshd_config.d /etc/sysctl.d /etc/apt/apt.conf.d
+mkdir -p /etc/ssh/sshd_config.d /etc/sysctl.d /etc/apt/apt.conf.d /var/log/installer
+printf 'autoinstall:\n  identity:\n    username: x\n    password: "%s"\n  ubuntu-pro:\n    token: "%s"\n  keep: "value"\n' 'HASHVALUE-1' 'TOKENVALUE-1' >/var/log/installer/autoinstall-user-data; chmod 400 /var/log/installer/autoinstall-user-data
 r() { echo "RESULT $1 $([[ $2 == 0 ]] && echo PASS || echo FAIL)"; }
 bash "${S}" >/tmp/o1 2>&1; r first_run_ok $?
 [[ "$(stat -c %a /etc/ssh/sshd_config.d/99-hardening.conf)" == 644 ]]; r sshd_conf_mode $?
@@ -33,9 +34,12 @@ grep -q 'kernel.kptr_restrict = 2' /etc/sysctl.d/90-hardening.conf; r sysctl_fil
 grep -q 'sysctl -q -p /etc/sysctl.d/90-hardening.conf' /tmp/calls.log; r sysctl_applied $?
 grep -q '"kubelet";' /etc/apt/apt.conf.d/52unattended-upgrades-local && grep -q 'Automatic-Reboot "false"' /etc/apt/apt.conf.d/52unattended-upgrades-local; r unattended_policy $?
 [[ ! -e /etc/apt/apt.conf.d/50unattended-upgrades ]]; r package_conf_untouched $?
-sha256sum /etc/ssh/sshd_config.d/99-hardening.conf /etc/sysctl.d/90-hardening.conf /etc/apt/apt.conf.d/52unattended-upgrades-local >/tmp/h1
+! grep -q -E 'HASHVALUE|TOKENVALUE' /var/log/installer/autoinstall-user-data; r installer_copy_redacted $?
+grep -q 'password: "<redacted>"' /var/log/installer/autoinstall-user-data && grep -q 'token: "<redacted>"' /var/log/installer/autoinstall-user-data && grep -q 'keep: "value"' /var/log/installer/autoinstall-user-data; r redaction_keeps_the_rest $?
+[[ "$(stat -c %a /var/log/installer/autoinstall-user-data)" == 400 ]]; r installer_copy_mode_kept $?
+sha256sum /etc/ssh/sshd_config.d/99-hardening.conf /etc/sysctl.d/90-hardening.conf /etc/apt/apt.conf.d/52unattended-upgrades-local /var/log/installer/autoinstall-user-data >/tmp/h1
 : >/tmp/calls.log; bash "${S}" >/tmp/o2 2>&1; r second_run_ok $?
-sha256sum /etc/ssh/sshd_config.d/99-hardening.conf /etc/sysctl.d/90-hardening.conf /etc/apt/apt.conf.d/52unattended-upgrades-local >/tmp/h2
+sha256sum /etc/ssh/sshd_config.d/99-hardening.conf /etc/sysctl.d/90-hardening.conf /etc/apt/apt.conf.d/52unattended-upgrades-local /var/log/installer/autoinstall-user-data >/tmp/h2
 cmp -s /tmp/h1 /tmp/h2; r idempotent_files $?
 ! grep -q -E 'sshd -t|reload|sysctl' /tmp/calls.log; r idempotent_no_reload $?
 SSH_ALLOW_TCP_FORWARDING=true bash "${S}" >/tmp/o3 2>&1; r forwarding_opt_in $?
@@ -53,5 +57,5 @@ OUT="$("${RT}" run --rm --network=none --cap-drop=all --cap-add=CHOWN --cap-add=
 while read -r _ name verdict; do
   if [[ "${verdict}" == PASS ]]; then ok "hardening: ${name}"; else bad "hardening: ${name}"; fi
 done < <(grep '^RESULT ' <<<"${OUT}")
-[[ "$(grep -c '^RESULT ' <<<"${OUT}")" -ge 19 ]] || bad "hardening: scenarios did not all run"
+[[ "$(grep -c '^RESULT ' <<<"${OUT}")" -ge 22 ]] || bad "hardening: scenarios did not all run"
 finish

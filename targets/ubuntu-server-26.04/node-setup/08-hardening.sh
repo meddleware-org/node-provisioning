@@ -8,6 +8,8 @@
 #   * /etc/sysctl.d/90-hardening.conf             network and kernel-pointer hardening (Kubernetes parameters are in
 #                                                 99-kubernetes.conf, written by 02-kernel.sh, and load after this)
 #   * /etc/apt/apt.conf.d/52unattended-upgrades-local   security updates on, kernel/runtime/kubernetes packages held
+#   * /var/log/installer/autoinstall-user-data   the installer keeps a root-only copy of the seed's user-data, including the password
+#                                                 hash and any Ubuntu Pro token; they are redacted here (a credential has no business in a log)
 # The sshd configuration is validated (sshd -t) BEFORE it is activated: an invalid file is rolled back and the
 # script fails, so a bad edit can never lock the operator out.
 #
@@ -130,5 +132,19 @@ APT::Periodic::AutocleanInterval "7";
 APT::Periodic::Unattended-Upgrade "1";
 EOT
 ok "unattended-upgrades policy in place"
+
+# ── Credentials left in the installer's copy of the seed ───────────────────────
+# Subiquity copies the seed's user-data to /var/log/installer/autoinstall-user-data (mode 0400, root only). Redact the
+# secret values in place; the file keeps its mode and every other line.
+INSTALLER_COPY=/var/log/installer/autoinstall-user-data
+if [[ -f "${INSTALLER_COPY}" ]] && grep -qE '^[[:space:]]*(password|token):[[:space:]]*"[^"<]' "${INSTALLER_COPY}"; then
+  tmp="$(mktemp)"
+  sed -E 's/^([[:space:]]*(password|token):[[:space:]]*)"[^"]*"/\1"<redacted>"/' "${INSTALLER_COPY}" >"${tmp}"
+  install -m 0400 -o root -g root "${tmp}" "${INSTALLER_COPY}"
+  rm -f -- "${tmp}"
+  ok "credentials redacted in ${INSTALLER_COPY}"
+else
+  ok "no credentials left in the installer's copy of the seed"
+fi
 
 echo "==> 08-hardening: done"
