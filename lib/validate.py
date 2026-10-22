@@ -26,6 +26,25 @@ def walk_addresses(node, found):
             walk_addresses(item, found)
 
 
+def check_disk_identity(auto):
+    """Every disk action the installer may erase is selected by serial; none by device path or glob."""
+    errors = []
+    storage = auto.get("storage") or {}
+    disks = [a for a in storage.get("config", []) if isinstance(a, dict) and a.get("type") == "disk"]
+    if not disks:
+        errors.append("storage.config has no disk action")
+    for disk in disks:
+        if "path" in disk or "serial" in disk:
+            errors.append("disk %s is selected by path or plain serial: use match.serial" % disk.get("id"))
+        serial = (disk.get("match") or {}).get("serial")
+        if not isinstance(serial, str) or not serial or any(c in serial for c in "*?[]"):
+            errors.append("disk %s has no exact match.serial" % disk.get("id"))
+    cmds = auto.get("early-commands") or []
+    if not any(isinstance(c, str) and "ID_SERIAL" in c for c in cmds):
+        errors.append("early-commands identity guard is missing")
+    return errors
+
+
 def check_user_data(path, schema):
     errors = []
     with open(path, encoding="utf-8") as fh:
@@ -43,6 +62,7 @@ def check_user_data(path, schema):
     auto = doc["autoinstall"]
     if auto.get("version") != 1:
         errors.append("autoinstall.version must be 1")
+    errors += check_disk_identity(auto)
     if schema:
         import jsonschema
 

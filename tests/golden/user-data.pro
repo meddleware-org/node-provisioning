@@ -48,7 +48,8 @@ autoinstall:
       # ── OS disk: boot + root ──────────────────────────────────────────────
       - type: disk
         id: disk0
-        path: /dev/nvme0n1
+        match:
+          serial: "ExampleVendor_OsDisk_EX0000000001"
         ptable: gpt
         wipe: superblock
         preserve: false
@@ -156,6 +157,31 @@ autoinstall:
     # NOTE: socat omitted — not in the ubuntu-server-minimal squashfs, requires internet
     # download during the installer packages phase when VLAN 200 may not yet be up.
     # Installed by node-setup on the live system (kubeadm preflight requires it).
+
+  # ── Identity guard ──────────────────────────────────────────────────────────
+  # Runs before the installer probes or touches any storage; a failing command aborts the install.
+  # Exactly one disk must carry the OS serial and exactly one the data serial (udev ID_SERIAL).
+  # Device names such as nvme0n1 are not stable across boots, so they are never used to pick a disk.
+  # Run by sh (dash), not bash: POSIX constructs only.
+  early-commands:
+    - |
+      os_serial='ExampleVendor_OsDisk_EX0000000001'
+      data_serial='ExampleVendor_DataDisk_EX0000000002'
+      sysblock="${NP_SYS_BLOCK:-/sys/block}"
+      os_n=0
+      data_n=0
+      for dev in "$sysblock"/*; do
+        name="${dev##*/}"
+        case "$name" in loop*|ram*|zram*|sr*|fd*|nbd*|dm-*|md*) continue ;; esac
+        serial="$(udevadm info --query=property --name="/dev/$name" 2>/dev/null | sed -n 's/^ID_SERIAL=//p')"
+        [ -n "$serial" ] || continue
+        [ "$serial" = "$os_serial" ] && os_n=$((os_n + 1))
+        [ "$serial" = "$data_serial" ] && data_n=$((data_n + 1))
+      done
+      if [ "$os_n" -ne 1 ] || [ "$data_n" -ne 1 ]; then
+        echo "node-provisioning: expected exactly one OS disk and one data disk by serial, found $os_n and $data_n: aborting before any disk is touched" >&2
+        exit 1
+      fi
 
   late-commands:
     # Set -e and use a wrapper to catch errors without aborting early.

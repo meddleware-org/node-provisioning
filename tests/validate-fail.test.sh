@@ -28,6 +28,13 @@ fresh; sed -i 's/^ADMIN_USER=.*/ADMIN_USER=Admin/' "${T_TMP}/s/site.env"; render
 fresh; sed -i 's/^LAN_CIDR=.*/LAN_CIDR=192.0.2.0/' "${T_TMP}/s/site.env"; render_fails "LAN_CIDR without prefix"
 fresh; sed -i 's/^WAIT_ONLINE_INTERFACES=.*/WAIT_ONLINE_INTERFACES=/' "${T_TMP}/s/site.env"; render_fails "empty WAIT_ONLINE_INTERFACES"
 
+# disk identity
+fresh; sed -i 's/^OS_DISK_SERIAL=.*/OS_DISK_SERIAL=ExampleVendor_*/' "${T_TMP}/s/nodes/node1.env"; render_fails "glob in OS_DISK_SERIAL"
+fresh; sed -i '/^OS_DISK_SERIAL=/d' "${T_TMP}/s/nodes/node1.env";                   render_fails "OS_DISK_SERIAL missing (no default)"
+fresh; sed -i '/^DATA_DISK_SERIAL=/d' "${T_TMP}/s/nodes/node1.env";                 render_fails "DATA_DISK_SERIAL missing (no default)"
+fresh; sed -i 's/^DATA_DISK_SERIAL=.*/DATA_DISK_SERIAL=ExampleVendor_OsDisk_EX0000000001/' "${T_TMP}/s/nodes/node1.env"; render_fails "OS and data serial identical"
+fresh; sed -i 's/^OS_DISK_SERIAL=.*/OS_DISK_SERIAL=abc/' "${T_TMP}/s/nodes/node1.env"; render_fails "serial too short"
+
 # secret handling
 fresh; chmod 644 "${T_TMP}/s/ph";                                render_fails "password file readable by others"
 fresh; chmod 640 "${T_TMP}/s/ph";                                render_fails "password file readable by group"

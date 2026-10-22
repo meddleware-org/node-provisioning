@@ -20,6 +20,7 @@ np_prepare() {
   np_load_file "${NP_SITE_DIR}/site.env" site "${NP_SITE_DIR}"
   np_load_file "${NP_SITE_DIR}/nodes/${node}.env" node "${NP_SITE_DIR}"
   np_finish_config
+  [[ "${CFG[OS_DISK_SERIAL]}" != "${CFG[DATA_DISK_SERIAL]}" ]] || np_die "OS_DISK_SERIAL and DATA_DISK_SERIAL must name different disks"
   if [[ -z "${CFG[PASSWORD_HASH_FILE]:-}" ]]; then
     CFG[PASSWORD_HASH_FILE]="${HOME}/.config/node-provisioning/${NP_SITE_NAME}/${node}/password-hash"
   fi
@@ -103,7 +104,7 @@ np_render_seed() {
     [HOSTNAME]="${CFG[HOSTNAME]}" [ADMIN_USER]="${CFG[ADMIN_USER]}" [PASSWORD_HASH]="${NP_HASH}"
     [LOCALE]="${CFG[LOCALE]}" [KEYBOARD_LAYOUT]="${CFG[KEYBOARD_LAYOUT]}" [KEYBOARD_VARIANT]="${CFG[KEYBOARD_VARIANT]:-}"
     [SOURCE_ID]="${CFG[SOURCE_ID]}" [UPDATES]="${CFG[UPDATES]}" [EFI_SIZE]="${CFG[EFI_SIZE]}"
-    [OS_DISK_PATH]="${CFG[OS_DISK_PATH]}" [NETPLAN_FILE_NAME]="${CFG[NETPLAN_FILE_NAME]}"
+    [OS_DISK_SERIAL]="${CFG[OS_DISK_SERIAL]}" [DATA_DISK_SERIAL]="${CFG[DATA_DISK_SERIAL]}" [NETPLAN_FILE_NAME]="${CFG[NETPLAN_FILE_NAME]}"
     [WAIT_ONLINE_ARGS]="${wait_args}"
   )
   if [[ "${NP_PRO}" == 1 ]]; then NP_R[UBUNTU_PRO_TOKEN]="${NP_PRO_TOKEN}"; fi
