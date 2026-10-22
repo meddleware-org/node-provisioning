@@ -8,6 +8,8 @@ KEYBOARD_LAYOUT	text	no	us	no	Keyboard layout.
 KEYBOARD_VARIANT	text	no	-	no	Keyboard variant (empty for none).
 SOURCE_ID	text	no	ubuntu-server-minimal	no	Installer source id.
 UPDATES	enum:security,all	no	security	no	Installer update policy.
+TIMEZONE	tz	yes	-	no	IANA time zone; set explicitly so the installer does not geolocate.
+APT_FALLBACK	enum:abort,offline-install,continue-anyway	no	abort	no	Installer apt fallback; abort makes a mirror failure loud.
 EFI_SIZE	size	no	1G	no	EFI system partition size on the OS disk.
 INSTALLER_NETWORK_FILE	path	yes	-	no	Site YAML fragment: the installer's network section.
 NETPLAN_FILE	path	yes	-	no	Site YAML fragment: the installed system's netplan.

@@ -35,6 +35,11 @@ fresh; sed -i '/^DATA_DISK_SERIAL=/d' "${T_TMP}/s/nodes/node1.env";             
 fresh; sed -i 's/^DATA_DISK_SERIAL=.*/DATA_DISK_SERIAL=ExampleVendor_OsDisk_EX0000000001/' "${T_TMP}/s/nodes/node1.env"; render_fails "OS and data serial identical"
 fresh; sed -i 's/^OS_DISK_SERIAL=.*/OS_DISK_SERIAL=abc/' "${T_TMP}/s/nodes/node1.env"; render_fails "serial too short"
 
+# installer settings
+fresh; sed -i '/^TIMEZONE=/d' "${T_TMP}/s/site.env";                              render_fails "TIMEZONE missing (no geolocation default)"
+fresh; sed -i 's/^TIMEZONE=.*/TIMEZONE=Europe\/..\/x/' "${T_TMP}/s/site.env";     render_fails "invalid TIMEZONE"
+fresh; sed -i 's/^APT_FALLBACK=.*/APT_FALLBACK=whatever/' "${T_TMP}/s/site.env";   render_fails "invalid APT_FALLBACK"
+
 # secret handling
 fresh; chmod 644 "${T_TMP}/s/ph";                                render_fails "password file readable by others"
 fresh; chmod 640 "${T_TMP}/s/ph";                                render_fails "password file readable by group"

@@ -10,8 +10,8 @@ autoinstall:
   source:
     id: ubuntu-server-minimal
 
-  # Disable Subiquity installer event reporting to Canonical.
-  # Without this, every install phase is sent to Canonical's telemetry service.
+  # Installer progress reporting: no reporter is configured here. (The default reporter only prints
+  # progress to the console; it does not send anything to Canonical.)
   reporting: {}
 
   locale: en_US.UTF-8
@@ -19,6 +19,14 @@ autoinstall:
   keyboard:
     layout: us
     variant: ""
+
+  # Explicit time zone: the installer otherwise geolocates over the network.
+  timezone: Etc/UTC
+
+  # What the installer does when no package mirror is reachable (for example before a tagged VLAN is up):
+  # abort fails loudly; offline-install silently continues with the packages on the ISO.
+  apt:
+    fallback: abort
 
   # Network used while the installer runs (for example when the switch port carries a tagged VLAN).
   network:

@@ -10,8 +10,8 @@ autoinstall:
   source:
     id: @@SOURCE_ID@@
 
-  # Disable Subiquity installer event reporting to Canonical.
-  # Without this, every install phase is sent to Canonical's telemetry service.
+  # Installer progress reporting: no reporter is configured here. (The default reporter only prints
+  # progress to the console; it does not send anything to Canonical.)
   reporting: {}
 
   locale: @@LOCALE@@
@@ -19,6 +19,14 @@ autoinstall:
   keyboard:
     layout: @@KEYBOARD_LAYOUT@@
     variant: "@@KEYBOARD_VARIANT@@"
+
+  # Explicit time zone: the installer otherwise geolocates over the network.
+  timezone: @@TIMEZONE@@
+
+  # What the installer does when no package mirror is reachable (for example before a tagged VLAN is up):
+  # abort fails loudly; offline-install silently continues with the packages on the ISO.
+  apt:
+    fallback: @@APT_FALLBACK@@
 
   @@INCLUDE:INSTALLER_NETWORK@@
 

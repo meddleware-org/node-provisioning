@@ -39,6 +39,8 @@ def check_disk_identity(auto):
         serial = (disk.get("match") or {}).get("serial")
         if not isinstance(serial, str) or not serial or any(c in serial for c in "*?[]"):
             errors.append("disk %s has no exact match.serial" % disk.get("id"))
+    if not auto.get("timezone"):
+        errors.append("autoinstall.timezone must be set explicitly")
     cmds = auto.get("early-commands") or []
     if not any(isinstance(c, str) and "ID_SERIAL" in c for c in cmds):
         errors.append("early-commands identity guard is missing")
