@@ -11,7 +11,9 @@ exec(sys.argv[3])
 open(sys.argv[2], "w").write("#cloud-config\n" + yaml.safe_dump(doc))
 PY2
 mutate() { # name python-statements
+  rm -f -- "${T_TMP}/v/mut"
   python3 "${T_TMP}/mutate.py" "${T_TMP}/v/user-data" "${T_TMP}/v/mut" "$2"
+  if [[ ! -s "${T_TMP}/v/mut" ]]; then bad "validator rejects: $1 (the mutated document was not produced)"; return; fi
   if python3 "${ROOT}/lib/validate.py" user-data "${T_TMP}/v/mut" >/dev/null 2>&1; then bad "validator rejects: $1"; else ok "validator rejects: $1"; fi
 }
 check "validator accepts the unmodified document" python3 "${ROOT}/lib/validate.py" user-data "${T_TMP}/v/user-data"
