@@ -24,10 +24,9 @@ site's values. The extraction changed how destructive decisions are made: disks 
 default, the installer aborts before touching storage when the identity is wrong, persistent data is recognised only on
 the named disk, and every failure of a security-establishing step is fatal with a fail-safe where it matters.
 
-Twenty-one findings are recorded. Nineteen are resolved, with hermetic evidence (tests named below) and, where the behaviour
+Twenty-one findings are recorded. Twenty are resolved, with hermetic evidence (tests named below) and, where the behaviour
 needs a real installer, VM evidence (2026-10-22/23, Ubuntu Server 26.04.1). The first hardware run is the remaining
-evidence gate. One finding (F15) is deferred behind a maintainer action: package repository key fingerprints must be
-verified out of band before they are pinned. One (F18) is an accepted design risk awaiting a maintainer decision.
+evidence gate. One (F18) is an accepted design risk awaiting a maintainer decision.
 
 ## Threat model / trust boundaries
 
@@ -39,7 +38,7 @@ verified out of band before they are pinned. One (F18) is an accepted design ris
 | Installer | erases the OS disk | serial identity, exactly-one match, guard before storage |
 | Target disks | OS erased; data must survive | data disk absent from `storage:`; own-partition labels; UUID mounts; opt-in wipe bound to the serial |
 | Release tarball and registries | code that runs as root on the node | signed release, consensus pin, sha256 check on the node |
-| Package repositories | code that runs as root | signed-by keyrings; fingerprint pinning (F15, open) |
+| Package repositories | code that runs as root | signed-by keyrings; fingerprint pinning and expiry check (F15) |
 | Public repository | must hold nothing site-identifying | hygiene scan on every change, with the site's own values as a denylist |
 
 ## Severity scale
@@ -173,11 +172,25 @@ required, `apt.fallback` is a site key defaulting to `abort`, the comment is cor
 
 ### F15 — Package repository keys are fetched without fingerprint pinning
 
-**Severity:** Medium   **Disposition:** DEFERRED — gate: pre-mainnet; needs the maintainer to verify the fingerprints out of band.
-`03-crio.sh` and `04-kubetools.sh` download a repository key over HTTPS and install it into a signed-by keyring. A changed
-key would be trusted. Pinning requires fingerprints obtained from a source independent of the download; writing a value
-read from the same download would be trust-on-first-use presented as a pin. See OQ2.
-**Observed 2026-10-22 (candidates only, NOT verified out of band):** the CRI-O repository key `85B67D5C50100B1AC8CEFE49CBA9C85640A2B579` (created 2025-02-11, expires 2027-04-22) and the Kubernetes repository key `DE15B14486CD377B9E876E1A234654DA9A296436` (created 2022-08-25, **expires 2026-12-29**). Both scripts install a key only when none exists, so a key that is rotated or expires later is never refreshed on an existing node (`apt-get update` would then fail with an expired-key error): a rebuilt node fetches the current key, and the pin must be updated whenever the project rotates it.
+**Severity:** Medium   **Disposition:** RESOLVED (2026-10-23).
+`03-crio.sh` and `04-kubetools.sh` downloaded a repository key over HTTPS and installed it into a signed-by keyring, once, and
+only when none existed: a changed key would have been trusted, and a key that expired later was never refreshed.
+**Fix:** `node-setup/repokey.sh` (`np_install_repo_key`) downloads the key on every run into a throwaway GnuPG home and installs
+it only when every primary key in the download has a pinned fingerprint (an extra smuggled key is refused), none is expired or
+revoked, and the file parses as an OpenPGP public key. The keyring is replaced only when the bytes changed, so an upstream
+extension of the same key's expiry is adopted automatically and a repeat run reports "unchanged". A warning appears when a key
+has fewer than 60 days left. The pins are `85B67D5C50100B1AC8CEFE49CBA9C85640A2B579` (CRI-O, OBS) and
+`DE15B14486CD377B9E876E1A234654DA9A296436` (Kubernetes); a site can replace them with `CRIO_REPO_KEY_FPRS` /
+`KUBE_REPO_KEY_FPRS` (comma-separated, so an old and a new fingerprint can be accepted during a rotation).
+**Where the fingerprints came from (independent of the download, 2026-10-23):** the same fingerprints were obtained from public
+keyservers, and the Kubernetes value matches the pin in a Kubernetes SIG repository; both keys are shared across minor
+versions (the Kubernetes key is owned by the Kubernetes project, so a later-expiring key cannot be chosen by the operator). No
+upstream notice of the Kubernetes key's expiry on 2026-12-29 was found.
+**Residual risk:** a vendor rotation to a new fingerprint fails closed on every run until the new fingerprint is verified and
+added to the site; this is deliberate. If upstream extends the same key before 2026-12-29 nothing needs to be done.
+**Evidence:** `tests/repokey.test.sh` (real gpg, throwaway keys: pinned installs, unlisted/extra/expired/non-key refused with
+the keyring untouched, download failure keeps the old keyring, stale keyring refreshed, unchanged on the second run) and the VM
+`setup` scenario (the installed keyring's fingerprint equals the pin; a second run reports both keys unchanged).
 
 ### F16 — Images were not reproducible
 
@@ -257,7 +270,7 @@ them got "unbound variable". Hermetic tests had always set them. Found by the VM
 | HOST | Render and validation | HOLDS (F5, F14) |
 | HOST | Fail-closed execution | HOLDS (F4, F10) |
 | HOST | Node hardening | HOLDS (F6); verified on a real install in the VM (`sshd -T`, sysctl, firewall, holds) |
-| HOST | Package-source trust | DEFERRED (F15) |
+| HOST | Package-source trust | HOLDS (F15) |
 | HOST | Reproducibility | HOLDS (F16) |
 | HOST | Distribution and pinning | HOLDS in design and offline tests; first release pending |
 | HOST | Cross-repository consistency | consumer-side check (the workspace's `os/tool/check-site-consistency.sh`) |
@@ -330,7 +343,7 @@ installer's storage handling are proved by the VM matrix (2026-10-22/23); real d
 ### pre-mainnet
 
 - [ ] hardware run recorded: BMC virtual-media delivery, real disk serial strings, network during the installer (maintainer: needs the physical server)
-- [ ] package-repository key fingerprints pinned after out-of-band verification (F15; maintainer)
+- [x] package-repository key fingerprints pinned, expiry-checked and refreshed on every run (F15)
 - [ ] external review of the provisioning path (needs the maintainer's funding; mainnet go-live)
 
 ## Cross-project themes
@@ -344,7 +357,7 @@ installer's storage handling are proved by the VM matrix (2026-10-22/23); real d
 
 - **HOST-M1** holds. **HOST-M2** holds (VM OS reinstall proved). **HOST-M3** holds (mode 0600, deletion is the consumer's `--clean`; the installer's own copy is redacted, F19).
 - **HOST-M4** holds. **HOST-M5** holds. **HOST-M6** holds (installer-level behaviour proved in the VM; failure injection is hermetic).
-- **HOST-M7** holds, verified on a real install in the VM. **HOST-M8** does not hold yet (F15).
+- **HOST-M7** holds, verified on a real install in the VM. **HOST-M8** holds (F15).
 - **HOST-M9** holds. **HOST-M10** holds in design and offline tests (first release pending). **HOST-M11** holds.
 
 ## Implementation suggestions (SHOULD / MAY)
@@ -360,7 +373,9 @@ installer's storage handling are proved by the VM matrix (2026-10-22/23); real d
   the maintainer decides. A password hash that was exposed to an assistant session during the extraction must be replaced
   before the node is rebuilt.
 - **OQ2** — Where do the repository key fingerprints for the container runtime and Kubernetes packages come from, and who
-  verifies them out of band? (Gate for F15.)
+  verifies them out of band? **Answered 2026-10-23:** the project cross-checked them against public keyservers and a Kubernetes
+  SIG repository that pins the same values; they are pinned in the scripts and no maintainer action is needed. A vendor
+  rotation is adopted by adding the new fingerprint to the site after the same kind of cross-check.
 - **OQ3** — Do installer logs on the target retain the password hash or the Pro token? **Answered 2026-10-22 by the VM matrix:** only
   the installer's root-only (0400) copy of the seed's user-data does (F19); `08-hardening.sh` redacts it. The Pro token path was not
   exercised (a fake token would make the installer attempt a real attach); it is the same file and the same redaction.
@@ -391,3 +406,8 @@ installer's storage handling are proved by the VM matrix (2026-10-22/23); real d
   which does not write to stdout (it created a stray file and hashed empty input), so the early "disk untouched" results were
   vacuous; the comparison was replaced by `qemu-img compare` against a pre-operation copy (sanity-checked: identical gives 0, a 4 KiB
   write gives 1) and every disk-dependent scenario was re-run. The stray file was removed from the tip commit before anything was pushed.
+- 2026-10-23 — F15 closed. `tests/repokey.test.sh` (14 checks, real gpg with throwaway keys) and the VM `setup` scenario: the installed
+  Kubernetes and CRI-O keyrings carry exactly the pinned fingerprints, and a second run reports both unchanged. The T5 old-versus-new
+  container comparison no longer covers scripts 03 and 04 (they changed by design, B9); their earlier identical-log result stands in
+  this log. `WIPE_DATA_DISK` semantics changed (`0|1|force`, `1` never erases a layout this script created): four new container
+  scenarios in `tests/data-disk/`. The denylist reader trims CR and blanks and reports its term count.

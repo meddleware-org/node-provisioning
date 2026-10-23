@@ -33,10 +33,24 @@ the data disk, so reinstalling the OS keeps its data.
 - The same labels on **another** device (a disk from an earlier install) are reported as a warning and ignored; they can
   neither be mistaken for this layout nor mounted.
 - If the selected disk holds partitions that are not this layout, the script refuses unless `WIPE_DATA_DISK=1`. That
-  override only ever applies to the disk named by the serial.
+  override only ever applies to the disk named by the serial, and it only erases **unrecognised** data: a layout this script
+  created is kept, so re-running a failed first run with the flag still set is safe. `WIPE_DATA_DISK=force` rebuilds even
+  that layout (destroying its data). Any other value is rejected.
 - If `/etc/fstab` already maps one of the mount points to a different source, the script stops rather than change it.
 
 ## Firewall (05)
 
 `LAN_CIDR` and `POD_CIDR` are required. Administrative ports are restricted to `LAN_CIDR`; SSH stays open from anywhere
 (key-only). `ALLOW_ANYWHERE=1` opens everything and is only for an isolated bench network.
+
+## Package repository keys (03, 04)
+
+The CRI-O and Kubernetes apt keys are downloaded on every run and installed only if every primary key in the download has a
+pinned fingerprint, none is expired or revoked, and the file is an OpenPGP public key (`repokey.sh`). The keyring is replaced
+only when it changed, so an upstream extension of the same key is adopted automatically and a repeat run reports "unchanged".
+A warning appears when a key has fewer than 60 days left.
+
+The fingerprints are public values pinned in the scripts. If a vendor switches to a **new** key, the run fails closed until the
+new fingerprint has been verified from an independent source (a public keyserver, the vendor's documentation, a second
+project that pins it) and added to the site: `KUBE_REPO_KEY_FPRS` / `CRIO_REPO_KEY_FPRS` (comma-separated; list the old and the
+new one during a rotation).

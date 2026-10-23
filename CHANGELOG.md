@@ -21,6 +21,10 @@ First version, extracted from the platform workspace's in-tree OS tooling.
 
 ### Security
 
+- `03-crio.sh` and `04-kubetools.sh` install the repository signing keys through `repokey.sh`: a fresh download on every run, accepted only if
+  every primary key has a pinned fingerprint and none is expired or revoked (override: `CRIO_REPO_KEY_FPRS`, `KUBE_REPO_KEY_FPRS`).
+- `WIPE_DATA_DISK` is `0`, `1` or `force`; `1` never erases a layout the script created. `check-public-hygiene.sh` trims denylist terms and reports how many it loaded.
+
 - Disks are selected by udev `ID_SERIAL` with no default; the installer aborts before touching storage unless exactly one disk
   carries the OS serial and exactly one the data serial.
 - The data-disk script works only on the named disk, ignores labels on other devices, mounts by UUID and refuses unrecognised

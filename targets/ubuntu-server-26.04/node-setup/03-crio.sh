@@ -25,23 +25,19 @@ if ! command -v curl &>/dev/null || ! command -v gpg &>/dev/null; then
 fi
 
 # ── Add OpenSUSE CRI-O repository ─────────────────────────────────────────────
-if [[ ! -f /etc/apt/keyrings/cri-o-apt-keyring.gpg ]]; then
-  echo "  Adding OpenSUSE CRI-O repository (${CRIO_VERSION})..."
+# The signing key belongs to the CRI-O project's openSUSE Build Service project (one key for all minors). It is downloaded on
+# every run and accepted only if its fingerprint is pinned and it has not expired (see repokey.sh). Fingerprint cross-checked
+# 2026-10-22 against public keyservers and a Kubernetes SIG repository that pins the same value; a rotation is adopted by adding
+# the new fingerprint to CRIO_REPO_KEY_FPRS (site key).
+# shellcheck source=repokey.sh
+source "$(dirname "${BASH_SOURCE[0]}")/repokey.sh"
+np_install_repo_key "CRI-O" "https://download.opensuse.org/repositories/isv:/cri-o:/stable:/${CRIO_VERSION}/deb/Release.key" \
+  /etc/apt/keyrings/cri-o-apt-keyring.gpg "${CRIO_REPO_KEY_FPRS:-85B67D5C50100B1AC8CEFE49CBA9C85640A2B579}"
 
-  mkdir -p /etc/apt/keyrings
-
-  # Import the CRI-O GPG key
-  curl -fsSL "https://download.opensuse.org/repositories/isv:/cri-o:/stable:/${CRIO_VERSION}/deb/Release.key" \
-    | gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
-  chmod a+r /etc/apt/keyrings/cri-o-apt-keyring.gpg
-  echo "  [OK] CRI-O GPG key imported"
-
-  # Add the CRI-O repository
-  echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] \
+echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] \
 https://download.opensuse.org/repositories/isv:/cri-o:/stable:/${CRIO_VERSION}/deb/ /" \
-    | tee /etc/apt/sources.list.d/cri-o.list > /dev/null
-  echo "  [OK] CRI-O repository added"
-fi
+  | tee /etc/apt/sources.list.d/cri-o.list > /dev/null
+echo "  [OK] CRI-O repository configured"
 
 # ── Install from the OpenSUSE repository ──────────────────────────────────────
 apt-get update -qq

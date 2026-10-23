@@ -12,13 +12,15 @@ KUBE_MINOR="${KUBE_MINOR:?KUBE_MINOR is required}"
 echo "==> 04-kubetools: installing Kubernetes toolchain v${KUBE_VERSION}"
 
 # ── Kubernetes APT repository ─────────────────────────────────────────────────
-if [[ ! -f /etc/apt/keyrings/kubernetes-apt-keyring.gpg ]]; then
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL "https://pkgs.k8s.io/core:/stable:/${KUBE_MINOR}/deb/Release.key" \
-    | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  chmod a+r /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  echo "  [OK] Kubernetes GPG key imported"
-fi
+# The signing key is owned by the Kubernetes project and shared by all minor repositories. It is downloaded on every run and
+# accepted only if its fingerprint is pinned and it has not expired (see repokey.sh): when the project extends the key's expiry
+# the refreshed key is picked up here; when it replaces the key the run fails closed until the new fingerprint is added to
+# KUBE_REPO_KEY_FPRS (site key). Fingerprint cross-checked 2026-10-22 against public keyservers and a Kubernetes SIG repository
+# that pins the same value.
+# shellcheck source=repokey.sh
+source "$(dirname "${BASH_SOURCE[0]}")/repokey.sh"
+np_install_repo_key "Kubernetes" "https://pkgs.k8s.io/core:/stable:/${KUBE_MINOR}/deb/Release.key" \
+  /etc/apt/keyrings/kubernetes-apt-keyring.gpg "${KUBE_REPO_KEY_FPRS:-DE15B14486CD377B9E876E1A234654DA9A296436}"
 
 echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
 https://pkgs.k8s.io/core:/stable:/${KUBE_MINOR}/deb/ /" \

@@ -32,8 +32,8 @@ Rows marked *(planned)* describe keys that are not implemented yet: their values
 | 00-data-disk | disk auto-detection ("largest non-root disk"); partition sizes; owner of the registry directory | `DATA_DISK_SERIAL` only, resolved from the udev `ID_SERIAL` of each disk (no auto-detection); `ETCD_SIZE`, `LONGHORN_SIZE`, `REGISTRY_UID`, `REGISTRY_GID`. Partition labels and mount points are a fixed contract. |
 | 01-preflight | expected disks, NIC names, bond names, OS version, kernel | the OS and data disks by serial (from the node file); `EXPECT_ARCH`, `EXPECT_KERNEL_PREFIX`, `EXPECT_INTERFACES`, `EXPECT_BONDS` |
 | 02-kernel | module list, sysctl values | built-in defaults; CNI-specific lines are conditional |
-| 03-crio | runtime version channel, repository, pause image, limits | `KUBE_MINOR`, `PAUSE_IMAGE`, `INSTALL_PODMAN` *(planned)* |
-| 04-kubetools | Kubernetes version and channel, Longhorn prerequisites | `KUBE_VERSION`, `KUBE_MINOR`, `LONGHORN_PREREQS` *(planned)* |
+| 03-crio | runtime version channel, repository, pause image, limits, signing-key fingerprints | `KUBE_MINOR`, `PAUSE_IMAGE`, `CRIO_REPO_KEY_FPRS`, `INSTALL_PODMAN` *(planned)* |
+| 04-kubetools | Kubernetes version and channel, signing-key fingerprints, Longhorn prerequisites | `KUBE_VERSION`, `KUBE_MINOR`, `KUBE_REPO_KEY_FPRS`, `LONGHORN_PREREQS` *(planned)* |
 | 05-ufw | LAN and pod CIDRs, port list, open-anywhere switch | `LAN_CIDR`, `POD_CIDR` (required), `FIREWALL_EXTRA` *(planned)* |
 | 06-telemetry | extra blocked hosts | built-in + `TELEMETRY_HOSTS_EXTRA` |
 | 07-ubuntu-pro | services to enable/disable | `PRO_ENABLE`, `PRO_DISABLE` |

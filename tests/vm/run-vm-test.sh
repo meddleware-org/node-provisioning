@@ -236,6 +236,11 @@ s_setup() { # the real node setup (00-08) inside the installed VM; needs the int
   eq sysctl_kptr_restrict "$(vmssh 'sysctl -n kernel.kptr_restrict')" 2
   eq sysctl_ip_forward "$(vmssh 'sysctl -n net.ipv4.ip_forward')" 1
   vmssh 'systemctl is-active crio' | grep -q '^active$'; result crio_active $?
+  for kr in kubernetes-apt-keyring cri-o-apt-keyring; do
+    vmssh "gpg --show-keys --with-colons /etc/apt/keyrings/${kr}.gpg 2>/dev/null | awk -F: '/^fpr/{print \$10; exit}'" >"${W}/keyring-${kr}.txt" 2>&1
+  done
+  eq kubernetes_keyring_fingerprint_is_pinned "$(cat "${W}/keyring-kubernetes-apt-keyring.txt")" DE15B14486CD377B9E876E1A234654DA9A296436
+  eq crio_keyring_fingerprint_is_pinned "$(cat "${W}/keyring-cri-o-apt-keyring.txt")" 85B67D5C50100B1AC8CEFE49CBA9C85640A2B579
   vmssh 'kubeadm version -o short' | grep -q '^v1.36.3$'; result kubeadm_pinned_version $?
   vmssh 'apt-mark showhold' >"${W}/holds.txt" 2>&1; grep -q kubeadm "${W}/holds.txt" && grep -q cri-o "${W}/holds.txt"; result runtime_and_kube_packages_held $?
   vmssh 'test -f /etc/apt/apt.conf.d/52unattended-upgrades-local'; result unattended_upgrades_policy_installed $?
@@ -248,6 +253,7 @@ s_setup() { # the real node setup (00-08) inside the installed VM; needs the int
   # idempotence: a second run changes nothing destructive and succeeds
   vmssh "${NPCLI} --step setup" >"${W}/setup-run2.txt" 2>&1; result node_setup_is_idempotent $?
   grep -q "Layout already present" "${W}/setup-run2.txt"; result second_run_recognises_the_layout $?
+  grep -q "Kubernetes repository key .* unchanged" "${W}/setup-run2.txt" && grep -q "CRI-O repository key .* unchanged" "${W}/setup-run2.txt"; result second_run_reports_repo_keys_unchanged $?
   eq marker_survives_second_run "$(vmssh 'cat /var/lib/persistent/MARKER')" precious
   stop_vm
 }

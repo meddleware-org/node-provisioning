@@ -48,6 +48,9 @@ OUT="$(H --denylist "${T_TMP}/deny")"; RC=$?
 [[ "${RC}" -ne 0 && "${OUT}" == *"d.txt:1: denylisted term"* && "${OUT}" != *PRODHOST* && "${OUT}" != *prodhost* ]] && ok "denylist file term flagged, not printed" || bad "denylist file term flagged, not printed"
 OUT="$(HYGIENE_DENYLIST='prodhost-01' H)"; RC=$?
 [[ "${RC}" -ne 0 ]] && ok "HYGIENE_DENYLIST variable flagged" || bad "HYGIENE_DENYLIST variable flagged"
+[[ "${OUT}" == *'denylist: 1 term(s) loaded'* ]] && ok "denylist count is reported (values are not)" || bad "denylist count is reported: ${OUT}"
+OUT="$(HYGIENE_DENYLIST=$'  prodhost-01 \r\n\n' H)"; RC=$?
+[[ "${RC}" -ne 0 && "${OUT}" == *'denylist: 1 term(s) loaded'* ]] && ok "denylist terms are trimmed (CR, blanks)" || bad "denylist terms are trimmed: ${OUT}"
 mkdir -p "${T_TMP}/site/nodes"
 printf 'ADMIN_USER=admin\n' >"${T_TMP}/site/site.env"; printf 'HOSTNAME=prodhost-01\nNODE_IP=192.0.2.50\n' >"${T_TMP}/site/nodes/n.env"
 OUT="$(H --site "${T_TMP}/site")"; RC=$?

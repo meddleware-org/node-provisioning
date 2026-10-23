@@ -14,5 +14,5 @@ OUT="$("${RT}" run --rm --network=none --cap-drop=all --cap-add=CHOWN --cap-add=
 while read -r _ name verdict; do
   if [[ "${verdict}" == PASS ]]; then ok "data-disk: ${name}"; else bad "data-disk: ${name}"; fi
 done < <(grep '^RESULT ' <<<"${OUT}")
-[[ "$(grep -c '^RESULT ' <<<"${OUT}")" -ge 14 ]] || bad "data-disk: scenarios did not all run"
+[[ "$(grep -c '^RESULT ' <<<"${OUT}")" -ge 18 ]] || bad "data-disk: scenarios did not all run"
 finish

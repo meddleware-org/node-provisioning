@@ -35,6 +35,10 @@ s_stale_hdd_layout_present() { reset; layout /dev/sda; layout /dev/nvme0n1; run;
 s_unrecognised_refuses() { reset; echo '/dev/nvme0n1p1|other|uuid-x' >>/fake/blkid.db; run; [[ "$(rc)" != 0 ]] && ! called sfdisk && ! called wipefs && grep -q 'WIPE_DATA_DISK=1' /fake/out.txt; }
 s_unrecognised_wipe() { reset; echo '/dev/nvme0n1p1|other|uuid-x' >>/fake/blkid.db; WIPE_DATA_DISK=1 run; [[ "$(rc)" == 0 ]] && called "wipefs -a /dev/nvme0n1" && called "sfdisk /dev/nvme0n1" && ! called "sfdisk /dev/sda"; }
 s_wipe_never_other_disk() { reset; echo '/dev/sda1|keep|uuid-h' >>/fake/blkid.db; WIPE_DATA_DISK=1 run; [[ "$(rc)" == 0 ]] && ! called "wipefs -a /dev/sda" && grep -q '/dev/sda1|keep' /fake/blkid.db; }
+s_wipe1_keeps_own_layout() { reset; layout /dev/nvme0n1; WIPE_DATA_DISK=1 run; [[ "$(rc)" == 0 ]] && ! called sfdisk && ! called wipefs && ! called mkfs && grep -q 'existing layout is kept' /fake/out.txt; }
+s_wipe_force_rebuilds() { reset; layout /dev/nvme0n1; WIPE_DATA_DISK=force run; [[ "$(rc)" == 0 ]] && called "wipefs -a /dev/nvme0n1" && called "sfdisk /dev/nvme0n1" && called "mkfs.ext4 -q -L persistent /dev/nvme0n1p3"; }
+s_wipe_value_validated() { reset; WIPE_DATA_DISK=yes run; [[ "$(rc)" != 0 ]] && ! called sfdisk && ! called wipefs; }
+s_wipe1_rerun_after_first_wipe() { reset; echo '/dev/nvme0n1p1|other|uuid-x' >>/fake/blkid.db; WIPE_DATA_DISK=1 run; : >/fake/calls.log; WIPE_DATA_DISK=1 run; [[ "$(rc)" == 0 ]] && ! called sfdisk && ! called wipefs; }
 s_serial_absent() { reset; rm -f /fake/serials/nvme0n1; run; [[ "$(rc)" != 0 ]] && ! called sfdisk && ! called mkfs && ! called wipefs; }
 s_serial_duplicate() { reset; echo "${DATA_S}" >/fake/serials/sda; run; [[ "$(rc)" != 0 ]] && ! called sfdisk && ! called wipefs; }
 s_serial_is_root_disk() { reset; export DATA_DISK_SERIAL="${OS_S}"; run; [[ "$(rc)" != 0 ]] && ! called sfdisk && ! called wipefs && grep -q 'root disk' /fake/out.txt; }
@@ -44,6 +48,7 @@ s_fstab_conflict() { reset; layout /dev/nvme0n1; echo 'UUID=some-other /var/lib/
 s_idempotent() { reset; run; cp /etc/fstab /fake/fstab1; : >/fake/calls.log; run; [[ "$(rc)" == 0 ]] && cmp -s /etc/fstab /fake/fstab1 && ! called sfdisk && ! called mkfs; }
 
 for s in fresh reinstall stale_hdd_blank_data stale_hdd_layout_present unrecognised_refuses unrecognised_wipe wipe_never_other_disk \
+         wipe1_keeps_own_layout wipe_force_rebuilds wipe_value_validated wipe1_rerun_after_first_wipe \
          serial_absent serial_duplicate serial_is_root_disk serial_required serial_glob_rejected fstab_conflict idempotent; do
   CUR="$s"; "s_${s}" && echo "RESULT ${s} PASS" || echo "RESULT ${s} FAIL"
 done

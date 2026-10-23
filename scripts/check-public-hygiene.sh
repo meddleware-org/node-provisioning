@@ -102,9 +102,11 @@ if [[ -n "${SITE}" ]]; then
     { grep -h -A3 -E '^\s*search:' "${SITE}"/*.yaml 2>/dev/null || true; } | grep -o -E '[A-Za-z0-9.-]+\.[A-Za-z]{2,}' || true
   } | awk 'length($0) >= 5' | { grep -v -i -x -E 'admin|administrator|root|ubuntu|user|localhost|node[0-9]*' || true; } | sort -u >>"${TMP}/deny"
 fi
-sed -i '/^[[:space:]]*$/d' "${TMP}/deny"
+# A copy from a terminal can carry CR or stray blanks; a term with trailing spaces would silently never match.
+sed -i -E 's/\r//g; s/^[[:space:]]+//; s/[[:space:]]+$//; /^$/d' "${TMP}/deny"
 sort -u "${TMP}/deny" -o "${TMP}/deny"
 if (( PRINT == 1 )); then cat "${TMP}/deny"; exit 0; fi
+echo "  [hygiene] denylist: $(wc -l <"${TMP}/deny") term(s) loaded"
 # Each term is checked on its own so the allowlist can waive one (kind "term") with a stated reason.
 while IFS= read -r term; do
   [[ -n "${term}" ]] || continue

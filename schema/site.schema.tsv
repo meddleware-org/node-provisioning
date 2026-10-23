@@ -27,6 +27,8 @@ LONGHORN_SIZE	size	no	150G	no	Longhorn fast-tier partition.
 REGISTRY_UID	int	no	1000	no	Owner uid of the persistent registry directory.
 REGISTRY_GID	int	no	1000	no	Owner gid of the persistent registry directory.
 TELEMETRY_HOSTS_EXTRA	list:host	no	-	no	Extra host names blocked in /etc/hosts (analytics and crash-report endpoints of software you run). The Ubuntu hosts are built in.
+KUBE_REPO_KEY_FPRS	list:text	no	-	no	Accepted primary-key fingerprints of the Kubernetes apt repository (owned by the Kubernetes project, shared by all minors). Default: the pinned value in 04-kubetools.sh. Add a new fingerprint here to adopt an upstream key rotation.
+CRIO_REPO_KEY_FPRS	list:text	no	-	no	Accepted primary-key fingerprints of the CRI-O apt repository (openSUSE Build Service project key, shared by all minors). Default: the pinned value in 03-crio.sh.
 ## hardening
 SSH_ALLOW_TCP_FORWARDING	bool	no	false	no	Allow ssh -L / -R port forwarding.
 ## ubuntu pro

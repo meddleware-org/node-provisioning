@@ -27,8 +27,11 @@
 #   LONGHORN_SIZE    Longhorn fast-tier size        (default: 150G)
 #   REGISTRY_UID     Owner uid for the registry dir (default: 1000)
 #   REGISTRY_GID     Owner gid for the registry dir (default: 1000)
-#   WIPE_DATA_DISK   Set to 1 to allow (re)partitioning the selected disk when it holds UNRECOGNISED data.
-#                    Default 0 = refuse (data-loss guard). It only ever applies to the disk named by the serial.
+#   WIPE_DATA_DISK   0 (default): refuse to touch a disk that holds unrecognised data (data-loss guard).
+#                    1: allow erasing UNRECOGNISED data on the named disk (for example an older install). A layout this script
+#                       created is never erased by 1, so re-running a failed bootstrap with the flag still set is safe.
+#                    force: erase and rebuild even a layout this script created (DESTROYS its data).
+#                    It only ever applies to the disk named by the serial.
 #
 # Idempotent and safe to re-run.
 
@@ -45,6 +48,7 @@ LONGHORN_SIZE="${LONGHORN_SIZE:-150G}"
 REGISTRY_UID="${REGISTRY_UID:-1000}"
 REGISTRY_GID="${REGISTRY_GID:-1000}"
 WIPE_DATA_DISK="${WIPE_DATA_DISK:-0}"
+[[ "${WIPE_DATA_DISK}" =~ ^(0|1|force)$ ]] || { echo "  [FAIL] WIPE_DATA_DISK must be 0, 1 or force" >&2; exit 1; }
 SYS_BLOCK="${NP_SYS_BLOCK:-/sys/block}"
 LABELS=(etcd longhorn-nvme persistent)
 MOUNTS=(/var/lib/etcd /var/lib/longhorn-nvme /var/lib/persistent)
@@ -86,13 +90,14 @@ if [[ "$(label_of "$(part 1)")" == "${LABELS[0]}" && "$(label_of "$(part 2)")" =
   layout_present=1
 fi
 
-if (( layout_present )) && [[ "${WIPE_DATA_DISK}" -ne 1 ]]; then
+if (( layout_present )) && [[ "${WIPE_DATA_DISK}" != force ]]; then
   info "Layout already present on ${DATA_DISK}; will mount only."
+  [[ "${WIPE_DATA_DISK}" != 1 ]] || info "WIPE_DATA_DISK=1 erases only unrecognised data: the existing layout is kept (use force to rebuild it)."
 else
   # ── Data-loss guard ───────────────────────────────────────────────────────────
   # The selected disk carries partitions that are NOT our layout: do not touch it unless the operator opts in.
   existing_parts="$(lsblk -no NAME "${DATA_DISK}" | tail -n +2 | wc -l)"
-  if [[ "${existing_parts}" -gt 0 && "${WIPE_DATA_DISK}" -ne 1 ]]; then
+  if [[ "${existing_parts}" -gt 0 && "${WIPE_DATA_DISK}" == 0 ]]; then
     die "${DATA_DISK} already has ${existing_parts} partition(s) that are not this layout.
        Refusing to overwrite unrecognised data. Re-run with WIPE_DATA_DISK=1 to
        repartition (DESTROYS all data on ${DATA_DISK})."
