@@ -67,7 +67,7 @@ resolve_serial() { # <serial> -> sets RESOLVED_N and RESOLVED_DEV
     if [[ "${serial}" == "${want}" ]]; then RESOLVED_DEV="/dev/${name}"; RESOLVED_N=$((RESOLVED_N + 1)); fi
   done
 }
-OS_RESOLVED=""
+OS_RESOLVED=""; DATA_RESOLVED=""
 for pair in "OS_DISK_SERIAL:OS disk" "DATA_DISK_SERIAL:data disk"; do
   var="${pair%%:*}"; what="${pair#*:}"; want="${!var:-}"
   if [[ -z "${want}" ]]; then info "${var} is not set: ${what} not checked"; continue; fi
@@ -76,6 +76,7 @@ for pair in "OS_DISK_SERIAL:OS disk" "DATA_DISK_SERIAL:data disk"; do
     SIZE=$(lsblk -dno SIZE "${RESOLVED_DEV}" 2>/dev/null || echo "unknown")
     ok "${what} present (${RESOLVED_DEV}, ${SIZE})"
     [[ "${var}" == OS_DISK_SERIAL ]] && OS_RESOLVED="${RESOLVED_DEV}"
+    [[ "${var}" == DATA_DISK_SERIAL ]] && DATA_RESOLVED="${RESOLVED_DEV}"
   else
     fail "${what}: expected exactly one disk with the configured serial, found ${RESOLVED_N}"
   fi
@@ -90,11 +91,18 @@ fi
 # in the OS-setup phase — AFTER this preflight). So on a first boot they are expected
 # to be absent here; that is informational, not an error. On a re-install the existing
 # labelled partitions are detected. See docs/node-setup.md.
-if blkid -L persistent >/dev/null 2>&1; then
-  ok "data disk already provisioned (LABEL=persistent present)"
+# Only a partition of the CONFIGURED data disk counts: the same labels on another disk (an older install) are not this layout.
+PERSIST_ON_DATA=0; PERSIST_ELSEWHERE=""
+while read -r pdev; do
+  [[ -n "${pdev}" ]] || continue
+  if [[ -n "${DATA_RESOLVED}" && "${pdev}" =~ ^${DATA_RESOLVED}p?[0-9]+$ ]]; then PERSIST_ON_DATA=1; else PERSIST_ELSEWHERE="${PERSIST_ELSEWHERE} ${pdev}"; fi
+done < <(blkid -o device -t LABEL=persistent 2>/dev/null || true)
+if (( PERSIST_ON_DATA )); then
+  ok "data disk already provisioned (LABEL=persistent on ${DATA_RESOLVED})"
 else
   info "data disk not yet provisioned — 00-data-disk.sh will create it in OS setup (docs/node-setup.md)"
 fi
+[[ -z "${PERSIST_ELSEWHERE}" ]] || warn "LABEL=persistent also exists on${PERSIST_ELSEWHERE}, which is not the configured data disk: ignored (00-data-disk.sh uses only the configured disk)"
 
 # /var/lib/etcd is a dedicated mount once 00-data-disk.sh has run.
 echo "── etcd mount"

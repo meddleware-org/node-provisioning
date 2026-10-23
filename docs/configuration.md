@@ -50,3 +50,12 @@ node-provisioning build-seed  --site DIR --node NAME --format iso|img|floppy --o
 `validate` renders into a scratch directory and checks the result against the pinned Subiquity autoinstall schema
 (`scripts/fetch-subiquity-schema.sh`) and `cloud-init schema`. `--strict` fails when the schema is not available
 instead of skipping it. See [inventory.md](inventory.md) for what each key controls.
+
+## Installer network and link aggregation
+
+`installer-network.yaml` is the network the **installer** uses (to reach the package mirror and Ubuntu Pro). It must match what the
+switch expects. If the node's switch ports form an LACP aggregate (802.3ad), a single bare NIC in the installer gets carrier and
+an address but **no traffic** until LACP negotiates, so the mirror check fails (with `APT_FALLBACK=abort` the install stops there).
+Describe the same bond, and the same VLAN on top of it, that the installed system uses (`netplan.yaml`): the bond negotiates in a
+few seconds and the installer then reaches the network. Check with the installer log after an install:
+`grep -i "Mirror checking" /var/log/installer/subiquity-server-debug.log*` should say `successful`.

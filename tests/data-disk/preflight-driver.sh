@@ -21,4 +21,7 @@ CUR=root_elsewhere;    reset; echo nvme0n1 >/fake/root-disk; run; res bash -c 'g
 CUR=serials_unset;     reset; unset OS_DISK_SERIAL DATA_DISK_SERIAL; run; res bash -c '[[ "$(cat /fake/rc)" == 0 ]] && grep -q "OS_DISK_SERIAL is not set" /fake/out.txt'
 CUR=names_not_used;    reset; mv /fake/sys/nvme1n1 /fake/sys/sdq; mv /fake/serials/nvme1n1 /fake/serials/sdq; echo sdq >/fake/root-disk; run; res bash -c '[[ "$(cat /fake/rc)" == 0 ]] && grep -q "/dev/sdq" /fake/out.txt'
 CUR=optional_expectations_unset; reset; unset EXPECT_INTERFACES EXPECT_BONDS EXPECT_KERNEL_PREFIX; run; res bash -c '[[ "$(cat /fake/rc)" == 0 ]] && ! grep -q "unbound variable" /fake/out.txt'
+CUR=data_layout_on_data_disk;  reset; echo "/dev/nvme0n1p3|persistent|uuid-a" >>/fake/blkid.db; run; res bash -c 'grep -q "data disk already provisioned (LABEL=persistent on /dev/nvme0n1)" /fake/out.txt'
+CUR=stale_label_on_another_disk; reset; echo "/dev/sda3|persistent|uuid-b" >>/fake/blkid.db; run; res bash -c '! grep -q "data disk already provisioned" /fake/out.txt && grep -q "WARN.*LABEL=persistent also exists on /dev/sda3.*not the configured data disk" /fake/out.txt && grep -q "data disk not yet provisioned" /fake/out.txt'
+CUR=layout_and_stale_label;    reset; printf "/dev/nvme0n1p3|persistent|uuid-a\n/dev/sda3|persistent|uuid-b\n" >>/fake/blkid.db; run; res bash -c 'grep -q "data disk already provisioned (LABEL=persistent on /dev/nvme0n1)" /fake/out.txt && grep -q "WARN.*also exists on /dev/sda3" /fake/out.txt'
 CUR=no_kubectl_short_flag; res bash -c '! grep -q -- "--short" /script'

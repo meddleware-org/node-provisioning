@@ -11,5 +11,5 @@ OUT="$("${RT}" run --rm --network=none --cap-drop=all --security-opt no-new-priv
 while read -r _ name verdict; do
   if [[ "${verdict}" == PASS ]]; then ok "preflight: ${name}"; else bad "preflight: ${name}"; fi
 done < <(grep '^RESULT ' <<<"${OUT}")
-[[ "$(grep -c '^RESULT ' <<<"${OUT}")" -ge 8 ]] || bad "preflight: scenarios did not all run"
+[[ "$(grep -c '^RESULT ' <<<"${OUT}")" -ge 11 ]] || bad "preflight: scenarios did not all run"
 finish

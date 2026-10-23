@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.0.2] - 2026-10-23
+
+### Fixed
+
+- `01-preflight.sh` reported "data disk already provisioned" when the label `persistent` existed on **any** disk (for example the
+  old install's disk). It now looks only at partitions of the configured data disk and warns about the label on any other disk.
+
+### Documentation
+
+- `docs/configuration.md`: the installer network must match the switch. When the node's ports are an LACP aggregate, a single
+  NIC in the installer gets carrier and an address but no traffic until LACP negotiates; describe the same bond (and VLAN) in
+  `installer-network.yaml` that the installed system uses.
+
 ## [0.0.1] - 2026-10-23
 
 First version, extracted from the platform workspace's in-tree OS tooling.
