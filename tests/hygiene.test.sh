@@ -52,6 +52,8 @@ mkdir -p "${T_TMP}/site/nodes"
 printf 'ADMIN_USER=admin\n' >"${T_TMP}/site/site.env"; printf 'HOSTNAME=prodhost-01\nNODE_IP=192.0.2.50\n' >"${T_TMP}/site/nodes/n.env"
 OUT="$(H --site "${T_TMP}/site")"; RC=$?
 [[ "${RC}" -ne 0 && "${OUT}" == *"d.txt:1: denylisted term"* ]] && ok "site-derived hostname flagged" || bad "site-derived hostname flagged: ${OUT}"
+OUT="$(H --site "${T_TMP}/site" --print-denylist)"; RC=$?
+[[ "${RC}" -eq 0 && "${OUT}" == *prodhost-01* && "${OUT}" == *192.0.2.50* ]] && ok "--print-denylist prints the derived terms" || bad "--print-denylist prints the derived terms"
 echo 'prodhost-01 is waived' >"${R}/d.txt"
 echo 'term|prodhost-01|public on purpose' >"${R}/.hygiene-allowlist"
 OUT="$(H --site "${T_TMP}/site")"; RC=$?

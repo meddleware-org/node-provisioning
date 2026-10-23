@@ -27,6 +27,7 @@ bash tests/run.sh                    # everything below that runs offline
 shellcheck -S warning -x -P SCRIPTDIR bin/node-provisioning lib/*.sh scripts/*.sh tests/*.sh targets/*/node-setup/*.sh
 bash scripts/check-public-hygiene.sh # secrets and identifying values of the working tree
 bash scripts/scan-history.sh --site <your-private-site>   # the same scan over EVERY commit (history keeps removed values)
+bash scripts/check-public-hygiene.sh --site <your-private-site> --print-denylist | gh secret set HYGIENE_DENYLIST --repo <org>/<repo>   # CI denylist, never printed
 git config core.hooksPath scripts/hooks   # pre-commit hook; set NP_HYGIENE_SITE to your private site for the denylist
 bash scripts/check-versions.sh       # VERSION vs tag (on a tag push also needs a CHANGELOG heading)
 bash tests/vm/run-vm-test.sh <ubuntu-live-server.iso> [probe install negative reinstall]   # manual: KVM, OVMF, QEMU

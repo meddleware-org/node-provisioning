@@ -3,20 +3,24 @@
 # crypt password hashes, SSH public keys, Ubuntu Pro token shapes, or any term from a denylist.
 # Findings are reported as file:line and kind only: the matched value is never printed.
 #
-# Usage: check-public-hygiene.sh [--site DIR] [--denylist FILE]
+# Usage: check-public-hygiene.sh [--site DIR] [--denylist FILE] [--print-denylist]
 #   --site DIR       derive a denylist from a (private) site directory: hostnames, addresses, serials
 #   --denylist FILE  extra terms, one per line (CI passes the HYGIENE_DENYLIST secret this way)
+#   --print-denylist print the terms derived from --site (one per line) and exit, without scanning. Pipe it straight into the
+#                    CI secret so the values never pass through a terminal log or a chat:
+#                    check-public-hygiene.sh --site DIR --print-denylist | gh secret set HYGIENE_DENYLIST --repo ORG/REPO
 # Allowlist: .hygiene-allowlist, lines "<kind>|<value>|<reason>" (kinds: ipv4 hash sshkey token term).
 # A "term" entry waives one denylist term everywhere (for a value that is public on purpose).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
-SITE=""; DENY_FILE=""
+SITE=""; DENY_FILE=""; PRINT=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --site) SITE="${2:?}"; shift 2 ;;
     --denylist) DENY_FILE="${2:?}"; shift 2 ;;
+    --print-denylist) PRINT=1; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -77,10 +81,12 @@ ipv4_is_documentation() {
   return 1
 }
 
+if (( PRINT == 0 )); then
 scan ipv4   '(?<![0-9.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9]|\.[0-9])'
 scan hash   '\$(?:1|2[aby]|5|6|7|y|gy)\$[./A-Za-z0-9$,=_-]{8,}'
 scan sshkey '(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp[0-9]+|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) AAAA[0-9A-Za-z+/=]{20,}'
 scan token  '\bC(?=[1-9A-HJ-NP-Za-km-z]*[0-9])[1-9A-HJ-NP-Za-km-z]{23,29}\b'
+fi
 
 # Denylist: terms from a file, the HYGIENE_DENYLIST variable, and values of a private site directory.
 : >"${TMP}/deny"
@@ -98,6 +104,7 @@ if [[ -n "${SITE}" ]]; then
 fi
 sed -i '/^[[:space:]]*$/d' "${TMP}/deny"
 sort -u "${TMP}/deny" -o "${TMP}/deny"
+if (( PRINT == 1 )); then cat "${TMP}/deny"; exit 0; fi
 # Each term is checked on its own so the allowlist can waive one (kind "term") with a stated reason.
 while IFS= read -r term; do
   [[ -n "${term}" ]] || continue

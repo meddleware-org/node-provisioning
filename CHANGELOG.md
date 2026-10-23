@@ -4,9 +4,9 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/).
 
-## [0.0.1] - unreleased
+## [0.0.1] - 2026-10-23
 
-First version, extracted from the platform workspace's in-tree OS tooling. Set the date when the release is tagged.
+First version, extracted from the platform workspace's in-tree OS tooling.
 
 ### Added
 
