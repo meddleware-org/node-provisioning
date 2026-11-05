@@ -3,7 +3,7 @@
 **Classification:** Internal security review
 **Project:** `repos/node-provisioning` — renders and validates an unattended-installer seed and runs the node-setup scripts for a Kubernetes node
 **Project type:** Shell and Python tooling (host provisioning)
-**Template:** AUDIT_TEMPLATE.md (2026-10-08) + AUDIT_TEMPLATE_HOST.md (2026-10-22) + AUDIT_TEMPLATE_OPS.md (2026-10-08, script-safety rows only)
+**Template:** AUDIT_TEMPLATE.md (2026-11-01) + AUDIT_TEMPLATE_HOST.md (2026-10-22) + AUDIT_TEMPLATE_OPS.md (2026-10-08, script-safety rows only)
 Not triggered: SUI and SUI_CLIENT (no chain interaction), IMG (no container image is built or deployed), TS/RS/GO (no such code), AUTH (the tool issues and verifies no tokens; it handles a password hash and an optional vendor token as opaque credentials, covered by HOST), PLATFORM (the cluster is audited with the workspace; node hardening is owned by HOST).
 **Targets:** Ubuntu Server 26.04 LTS, Subiquity autoinstall (installer schema pinned to tag 26.04.1), cloud-init NoCloud datasource; kubeadm-based single node with CRI-O, Cilium and Longhorn prerequisites
 **Destructive operations:** the installer erases exactly one disk, the OS disk, selected by udev `ID_SERIAL` (`match: {serial}`) after an early-commands guard confirms exactly one OS-serial disk and one data-serial disk; `00-data-disk.sh` partitions only the disk named by `DATA_DISK_SERIAL`, only when it holds no unrecognised data or `WIPE_DATA_DISK=1` is set; `05-ufw.sh` resets the firewall; `08-hardening.sh` rewrites SSH, sysctl and apt policy files
