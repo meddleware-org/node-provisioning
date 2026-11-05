@@ -9,8 +9,8 @@ Not triggered: SUI and SUI_CLIENT (no chain interaction), IMG (no container imag
 **Destructive operations:** the installer erases exactly one disk, the OS disk, selected by udev `ID_SERIAL` (`match: {serial}`) after an early-commands guard confirms exactly one OS-serial disk and one data-serial disk; `00-data-disk.sh` partitions only the disk named by `DATA_DISK_SERIAL`, only when it holds no unrecognised data or `WIPE_DATA_DISK=1` is set; `05-ufw.sh` resets the firewall; `08-hardening.sh` rewrites SSH, sysctl and apt policy files
 **Credentials in artefacts:** a built seed holds the administrator's password hash, authorised SSH public keys and optionally an Ubuntu Pro token; it is written with mode 0600 outside the repository, never published, and deleted after the install
 **Evidence:** hermetic suite and container tests (2026-10-22); VM matrix harness written 2026-10-22, runs recorded in the re-verification log; hardware runs: none yet
-**Deployment status:** unreleased (`VERSION` 0.0.1); first release not yet tagged
-**Review date:** 2026-10-22 (first pass, written during the extraction)
+**Deployment status:** released: `v0.0.1` and `v0.0.2` (2026-10-23; signed tarball and OCI artifact, GitHub release, quay.io and Docker Hub); `VERSION` 0.0.2; the workspace pins 0.0.2 in `config/node-provisioning.env`; the production node was rebuilt from it on 2026-10-23 (`docs/STATE.md`). Not re-verified here: the release signatures (the workspace's own `os/tool` verifies them when it fetches the pin)
+**Review date:** 2026-10-22 (first pass, written during the extraction) · delta review 2026-11-05 (0.0.2; F22)
 **Reviewer:** Internal review
 **Severity ceiling:** High — the tool decides which disks are erased on a machine that holds the cluster's data, and produces artefacts that carry credentials.
 **Status:** first-pass baseline
@@ -24,7 +24,7 @@ site's values. The extraction changed how destructive decisions are made: disks 
 default, the installer aborts before touching storage when the identity is wrong, persistent data is recognised only on
 the named disk, and every failure of a security-establishing step is fatal with a fail-safe where it matters.
 
-Twenty-one findings are recorded. Twenty are resolved, with hermetic evidence (tests named below) and, where the behaviour
+Twenty-two findings are recorded. Twenty-one are resolved, with hermetic evidence (tests named below) and, where the behaviour
 needs a real installer, VM evidence (2026-10-22/23, Ubuntu Server 26.04.1). The first hardware run is the remaining
 evidence gate. One (F18) is an accepted design risk awaiting a maintainer decision.
 
@@ -240,6 +240,12 @@ schema, fetched not vendored) when it has been fetched. **Evidence:** `tests/val
 them got "unbound variable". Hermetic tests had always set them. Found by the VM `scrub` scenario; both default to empty now.
 **Evidence:** `tests/preflight.test.sh` (`optional_expectations_unset`); VM `scrub`: preflight passes.
 
+### F22 — Preflight treated a data-disk label on any disk as this install's layout
+
+**Severity:** Medium   **Disposition:** RESOLVED (0.0.2, hermetic; found 2026-10-23 and fixed the same day)
+`01-preflight.sh` reported "data disk already provisioned (LABEL=persistent present)" whenever `blkid -L persistent` found the label on **any** disk, for example the previous install's disk. Invariant I3 (persistent data is recognised only on the named disk; foreign labels ignored) held in `00-data-disk.sh` but not in the preflight that reports the state to the operator, so a stale disk could make the preflight say the layout existed when the configured data disk was empty. The preflight now resolves the configured data disk, counts only its partitions (`${DATA_RESOLVED}p?N`), and warns, without counting, about the label on any other disk.
+**Evidence:** `tests/data-disk/preflight-driver.sh` — three scenarios (`data_layout_on_data_disk`, `stale_label_on_another_disk`, `layout_and_stale_label`) run in the container by `tests/preflight.test.sh` (now requires at least 11 scenario results); the full suite passed on 2026-11-05 (`bash tests/run.sh`: 17 files, 307 checks, 0 failed, shellcheck and hygiene included). Not covered: the VM matrix was not re-run for 0.0.2 (the harness exists; the change is in a script the VM `setup` scenario runs, but no run is recorded for it).
+
 ---
 
 ## Section A — Invariant verification matrix
@@ -411,3 +417,4 @@ installer's storage handling are proved by the VM matrix (2026-10-22/23); real d
   container comparison no longer covers scripts 03 and 04 (they changed by design, B9); their earlier identical-log result stands in
   this log. `WIPE_DATA_DISK` semantics changed (`0|1|force`, `1` never erases a layout this script created): four new container
   scenarios in `tests/data-disk/`. The denylist reader trims CR and blanks and reports its term count.
+- 2026-11-05 — delta review of 0.0.2 (`8d852f5`, 2026-10-23) and the Dependabot `setup-oras` bump (`005458ad…` v2.0.2 → `5e2f2482…` v2.0.3; pinned by SHA with a version comment, no permission or trigger change). Read the preflight change and its tests; ran `bash tests/run.sh` (17 files, 307 checks, 0 failed). New F22 (preflight counted a data-disk label on any disk; RESOLVED in 0.0.2). Corrected the front matter, which still said "unreleased (0.0.1)" after the tags `v0.0.1` and `v0.0.2`. The `docs/configuration.md` LACP/installer-network note is documentation (no finding). Hardware evidence: the production node was installed with this tool on 2026-10-23 (recorded in the workspace's `docs/STATE.md`, which `docs/verification.md` names as the place for hardware runs); no run record lives in this repository, so I claim nothing beyond that. Lens check: A11Y not triggered (no UI); HOST (2026-10-22) and OPS rows unchanged and still current; base re-cited to the 2026-11-01 registry (it gained the A11Y code only). Counts: 21 RESOLVED, 1 ACCEPTED-RISK pending OQ1 (F18, unchanged).
