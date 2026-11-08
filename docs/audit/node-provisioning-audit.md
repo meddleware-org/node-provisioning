@@ -350,7 +350,7 @@ installer's storage handling are proved by the VM matrix (2026-10-22/23); real d
 
 - [ ] hardware run recorded: BMC virtual-media delivery, real disk serial strings, network during the installer (maintainer: needs the physical server)
 - [x] package-repository key fingerprints pinned, expiry-checked and refreshed on every run (F15)
-- [ ] external review of the provisioning path (needs the maintainer's funding; mainnet go-live)
+- [ ] external review (ADR-0009 gate G4: not a launch gate; covered by redeploy and the audit pass) of the provisioning path (needs the maintainer's funding; mainnet go-live)
 
 ## Cross-project themes
 
