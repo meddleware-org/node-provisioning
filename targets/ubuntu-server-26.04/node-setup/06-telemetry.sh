@@ -61,13 +61,10 @@ if command -v landscape-config &>/dev/null; then
   ok "landscape-sysinfo disabled"
 fi
 
-# ── Snap metrics ─────────────────────────────────────────────────────────────
-if command -v snap &>/dev/null; then
-  snap set system metrics.enabled=false 2>/dev/null || true
-  ok "snap: metrics.enabled=false"
-else
-  info "snap not found — skipping"
-fi
+# ── Snap ─────────────────────────────────────────────────────────────────────
+# snapd has no telemetry switch to turn off: `snap set system metrics.enabled=false` was a no-op (the key does not exist on
+# snapd 2.78; the error was hidden), so it is not claimed here. Store contact is limited by what runs; the Ubuntu hosts in the
+# block below cover the telemetry endpoints.
 
 # ── /etc/hosts telemetry block (belt-and-suspenders) ─────────────────────────
 # Network-level fallback for components that have their own opt-out settings but may still attempt
