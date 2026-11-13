@@ -1,10 +1,10 @@
 # CLAUDE.md — node-provisioning
 
-Instructions for Claude Code. See [AGENTS.md](AGENTS.md) for layout and commands.
+Instructions for coding agents. See [README.md](README.md) for usage.
 
 ## Project identity
 
-- Shell tooling (bash + awk) that renders an Ubuntu autoinstall NoCloud seed and runs node-setup scripts.
+- Shell tooling (bash + awk) that renders and validates an Ubuntu Server autoinstall NoCloud seed and runs idempotent node-setup scripts. All site-specific data is external.
 - **License:** BSD Zero Clause (0BSD). Public repository: nothing in it may identify a site.
 - Version in `VERSION`; patch-only bumps until the platform's mainnet release.
 
@@ -26,9 +26,42 @@ Instructions for Claude Code. See [AGENTS.md](AGENTS.md) for layout and commands
 7. **Idempotent node scripts.** Re-running changes nothing; destructive paths need an explicit serial and a
    "no unrecognised data" check.
 
-## Tests
+## Layout
 
-`bash tests/run.sh` must pass before any commit. shellcheck (`-x`) and the hygiene check are part of it.
+```text
+bin/node-provisioning        CLI: render | validate | build-seed | node-setup | check-hygiene | version
+lib/                         log.sh, config.sh (strict KEY=value), render.sh + render.awk, validate.py, seed.sh
+schema/*.schema.tsv          key | type | required | default | secret | description
+targets/<distro>/autoinstall user-data template (the only file with @@MARKER@@s)
+targets/<distro>/node-setup  run.sh and numbered scripts
+examples/site/               documentation-only example site (RFC 5737 addresses)
+tests/                       run.sh and *.test.sh (container suites need podman or docker); golden/ expected renders;
+                             data-disk/ stubs for the container tests; vm/ manual QEMU/KVM harness and VM-only site
+scripts/                     check-versions.sh, check-public-hygiene.sh, scan-history.sh, fetch-subiquity-schema.sh, hooks/
+docs/                        configuration, inventory, seed-delivery, node-setup, verification, audit/
+```
+
+## Tests and commands
+
+`bash tests/run.sh` (runs every `tests/*.test.sh`, offline) must pass before any commit; CI also runs shellcheck.
+
+```bash
+bash tests/run.sh
+shellcheck -S warning -x -P SCRIPTDIR bin/node-provisioning lib/*.sh scripts/*.sh tests/*.sh targets/*/node-setup/*.sh
+bash scripts/check-public-hygiene.sh # secrets and identifying values of the working tree
+bash scripts/scan-history.sh --site <your-private-site>   # the same scan over EVERY commit (history keeps removed values)
+bash scripts/check-public-hygiene.sh --site <your-private-site> --print-denylist | gh secret set HYGIENE_DENYLIST --repo <org>/<repo>   # CI denylist, never printed
+git config core.hooksPath scripts/hooks   # pre-commit hook; set NP_HYGIENE_SITE to your private site for the denylist
+bash scripts/check-versions.sh       # VERSION vs tag (on a tag push also needs a CHANGELOG heading)
+bash tests/vm/run-vm-test.sh <ubuntu-live-server.iso> [probe install negative reinstall]   # manual: KVM, OVMF, QEMU
+```
+
+## Conventions
+
+- `set -euo pipefail`; quote everything; no `eval`; no `set -x`.
+- Configuration is strict `KEY=value`; types are declared in `schema/*.schema.tsv`.
+- Every behaviour change updates README/docs, CHANGELOG and tests; a new key updates the schema and `docs/inventory.md`.
+- Commit style: one short subject line, no body.
 
 ## Release
 
