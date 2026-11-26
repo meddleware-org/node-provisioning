@@ -19,20 +19,27 @@
 #
 # Configurable and idempotent — safe to re-run.
 
+# Exit codes: 0 in every case that is not an error: done, not on Ubuntu Pro, or not attached. A service that cannot be enabled is reported and skipped.
+# # Environment: PRO_ENABLE and PRO_DISABLE (space- or comma-separated service names).
+# # Stop on any error, unset variable or failed pipe.
 set -euo pipefail
 
+# info <message>: a note.
 info() { echo "  [ubuntu-pro] $*"; }
+# ok <message>: a service already in, or put into, the wanted state.
 ok()   { echo "  [OK] $*"; }
 
 # Space- or comma-separated.
 PRO_ENABLE="${PRO_ENABLE:-esm-infra esm-apps livepatch}"
 PRO_DISABLE="${PRO_DISABLE:-landscape anbox-cloud}"
+# Accept commas as well as spaces.
 PRO_ENABLE="${PRO_ENABLE//,/ }"
 PRO_DISABLE="${PRO_DISABLE//,/ }"
 
 echo "==> 07-ubuntu-pro: enforcing Ubuntu Pro service posture"
 
 # ── Preconditions ─────────────────────────────────────────────────────────────
+# A machine without the Pro client is not on Ubuntu Pro: nothing to do.
 if ! command -v pro &>/dev/null; then
   info "pro CLI not found (machine not on Ubuntu Pro) — skipping"
   echo "==> 07-ubuntu-pro: done (skipped)"
@@ -40,6 +47,7 @@ if ! command -v pro &>/dev/null; then
 fi
 
 # Only act on an attached machine. `pro status --format json` exposes `attached`.
+# Read the `attached` flag with jq when it is installed, and with grep otherwise; any failure counts as "not attached".
 attached="$(pro status --format json 2>/dev/null | { command -v jq >/dev/null && jq -r '.attached' || grep -o '"attached": *[a-z]*' | grep -o '[a-z]*$'; } || echo false)"
 if [[ "${attached}" != "true" ]]; then
   info "Machine is not attached to Ubuntu Pro (no token) — skipping service posture"
@@ -60,6 +68,7 @@ _svc_status() {
 }
 
 # ── Enable desired services (idempotent) ──────────────────────────────────────
+# Enable each wanted service that is not already on; one that does not exist on this release is skipped, and one that cannot be enabled is reported without stopping the run.
 for svc in ${PRO_ENABLE}; do
   st="$(_svc_status "${svc}")"
   case "${st}" in
@@ -74,6 +83,7 @@ for svc in ${PRO_ENABLE}; do
 done
 
 # ── Disable unwanted services (idempotent) ────────────────────────────────────
+# Disable each unwanted service that is on.
 for svc in ${PRO_DISABLE}; do
   st="$(_svc_status "${svc}")"
   case "${st}" in

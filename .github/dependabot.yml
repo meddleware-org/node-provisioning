@@ -1,10 +1,17 @@
+# Dependabot: weekly update pull requests for the one ecosystem this repository uses (GitHub Actions: the workflows pin each
+# action by commit hash, and Dependabot updates the hash and its version comment together). The repository has no package
+# manifest, so there is no other ecosystem.
 version: 2
 updates:
+  # The workflows under .github/workflows, checked from the repository root.
   - package-ecosystem: github-actions
     directory: /
+    # One check a week keeps the noise low.
     schedule:
       interval: weekly
+    # At most five open pull requests at a time.
     open-pull-requests-limit: 5
+    # All updates of a week arrive as one pull request.
     groups:
       github-actions:
         patterns: ['*']

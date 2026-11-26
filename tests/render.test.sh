@@ -2,16 +2,21 @@
 # Golden render of the example site (fixture secrets) with and without an Ubuntu Pro token, plus
 # structural expectations that must hold for any site.
 source "$(dirname "$0")/lib.sh"
+# A syntactically valid but fake Pro token.
 FAKE_TOKEN=C1111111111111111111111111
 G="${ROOT}/tests/golden"
+# A copy of the example site with fixture secrets.
 mk_site "${T_TMP}/site"
 
+# render_to <dir>: render the example node into the directory.
 render_to() { "${CLI}" render --site "${T_TMP}/site" --node node1 --out "$1" >/dev/null 2>&1; }
 
+# Two renders: without a token (a) and with one and a fixed instance id (b).
 mkdir -p "${T_TMP}/a" "${T_TMP}/b"
 render_to "${T_TMP}/a"
 UBUNTU_PRO_TOKEN="${FAKE_TOKEN}" INSTANCE_ID=node1-test render_to "${T_TMP}/b"
 
+# UPDATE_GOLDEN=1 rewrites the golden files from the current output (review the diff before committing).
 if [[ "${UPDATE_GOLDEN:-0}" == 1 ]]; then
   mkdir -p "${G}"
   cp "${T_TMP}/a/user-data" "${G}/user-data.no-pro"
@@ -20,6 +25,7 @@ if [[ "${UPDATE_GOLDEN:-0}" == 1 ]]; then
   echo "  (golden files updated)"
 fi
 
+# The golden files, byte for byte, and then the structural expectations that must hold for any site.
 check "golden user-data without a token"  cmp -s "${T_TMP}/a/user-data" "${G}/user-data.no-pro"
 check "golden user-data with a token"     cmp -s "${T_TMP}/b/user-data" "${G}/user-data.pro"
 check "golden meta-data"                  cmp -s "${T_TMP}/a/meta-data" "${G}/meta-data"

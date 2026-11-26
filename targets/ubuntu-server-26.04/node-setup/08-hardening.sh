@@ -16,15 +16,22 @@
 # CONFIG
 #   SSH_ALLOW_TCP_FORWARDING  true|false (default false): allow `ssh -L` / `-R` port forwarding.
 
+# Exit codes: 0 when the node is hardened, 1 on any failure (including an sshd configuration that was rejected and rolled back).
+# # Stop on any error, unset variable or failed pipe.
 set -euo pipefail
 
+# info <message>: a note.
 info() { echo "  [hardening] $*"; }
+# ok <message>: a step that is in place.
 ok()   { echo "  [OK] $*"; }
+# die <message>: report the failure and stop with status 1.
 die()  { echo "  [FAIL] $*" >&2; exit 1; }
 
+# The one setting: whether SSH may forward TCP ports (off unless asked).
 SSH_ALLOW_TCP_FORWARDING="${SSH_ALLOW_TCP_FORWARDING:-false}"
 [[ "${SSH_ALLOW_TCP_FORWARDING}" == true || "${SSH_ALLOW_TCP_FORWARDING}" == false ]] \
   || die "SSH_ALLOW_TCP_FORWARDING must be true or false"
+# The value written into the sshd configuration.
 fwd=no; [[ "${SSH_ALLOW_TCP_FORWARDING}" == true ]] && fwd=yes
 
 echo "==> 08-hardening: SSH, sysctl, unattended upgrades"
@@ -48,10 +55,14 @@ install_file() {
 }
 
 # ── SSH ─────────────────────────────────────────────────────────────────────────
+# The sshd drop-in this script owns.
 SSHD_CONF=/etc/ssh/sshd_config.d/99-hardening.conf
+# Keep a copy of the existing file, to restore it if sshd rejects the new one.
 prev=""
 if [[ -f "${SSHD_CONF}" ]]; then prev="$(mktemp)"; cp -p "${SSHD_CONF}" "${prev}"; fi
+# Whether the file changed this run (a re-run changes nothing and reloads nothing).
 changed=0
+# Key-only authentication, no root login, idle sessions dropped after fifteen minutes, verbose logging and no X11 or agent forwarding.
 if install_file "${SSHD_CONF}" 0644 <<EOT
 # Managed by node-provisioning (08-hardening.sh). Key-only SSH.
 PasswordAuthentication no
@@ -71,12 +82,14 @@ AllowAgentForwarding no
 AllowTcpForwarding ${fwd}
 EOT
 then changed=1; fi
+# Validate the new configuration before using it; on failure restore the previous file (or remove the new one) and stop, so a bad edit can never lock the operator out.
 if (( changed )) && command -v sshd >/dev/null 2>&1; then
   if ! sshd -t >/dev/null 2>&1; then
     if [[ -n "${prev}" ]]; then install -m 0644 -o root -g root "${prev}" "${SSHD_CONF}"; else rm -f -- "${SSHD_CONF}"; fi
     [[ -z "${prev}" ]] || rm -f -- "${prev}"
     die "sshd rejected the hardening configuration; it was rolled back"
   fi
+  # Reload under either service name (Ubuntu calls it `ssh`, other systems `sshd`).
   systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || info "could not reload sshd (not running?)"
 fi
 [[ -z "${prev}" ]] || rm -f -- "${prev}"
@@ -84,6 +97,7 @@ ok "ssh hardening in place (AllowTcpForwarding ${fwd})"
 
 # ── sysctl (security only; Kubernetes requirements are in 99-kubernetes.conf) ────
 changed=0
+# Network and kernel-pointer hardening: no source routing, no ICMP redirects, log impossible addresses, SYN cookies, restricted kernel pointers and dmesg.
 if install_file /etc/sysctl.d/90-hardening.conf 0644 <<'EOT'
 # Managed by node-provisioning (08-hardening.sh).
 # Disable IP source routing
@@ -103,10 +117,12 @@ kernel.kptr_restrict = 2
 kernel.dmesg_restrict = 1
 EOT
 then changed=1; fi
+# Apply the file now, only when it changed.
 if (( changed )); then sysctl -q -p /etc/sysctl.d/90-hardening.conf >/dev/null; fi
 ok "sysctl hardening in place"
 
 # ── Unattended upgrades (a drop-in; the package's own 50unattended-upgrades is left alone) ──
+# Security updates run by themselves, but never for the kernel, the container runtime or Kubernetes, which are upgraded deliberately; no automatic reboot.
 install_file /etc/apt/apt.conf.d/52unattended-upgrades-local 0644 <<'EOT' || true
 // Managed by node-provisioning (08-hardening.sh).
 // Never upgrade the kernel, container runtime or Kubernetes automatically: do that deliberately.
@@ -136,8 +152,11 @@ ok "unattended-upgrades policy in place"
 # ── Credentials left in the installer's copy of the seed ───────────────────────
 # Subiquity copies the seed's user-data to /var/log/installer/autoinstall-user-data (mode 0400, root only), re-serialised as
 # YAML: the values may be quoted or not. Redact every password/token value in place; the file keeps its mode and every other line.
+# The installer's own copy of the seed.
 INSTALLER_COPY=/var/log/installer/autoinstall-user-data
+# A password or token line with a value.
 secret_line='^[[:space:]]*(password|token):[[:space:]]*[^[:space:]]'
+# Redact in place unless every such value is already redacted (so a re-run changes nothing); the file keeps its mode (0400, root).
 if [[ -f "${INSTALLER_COPY}" ]] && grep -E "${secret_line}" "${INSTALLER_COPY}" | grep -qv '<redacted>'; then
   tmp="$(mktemp)"
   sed -E 's/^([[:space:]]*(password|token):[[:space:]]*)[^[:space:]].*$/\1"<redacted>"/' "${INSTALLER_COPY}" >"${tmp}"

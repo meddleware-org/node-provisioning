@@ -1,18 +1,22 @@
 # Generated seeds and build output are credential-bearing: never commit them.
+# Rendered output directories.
 /build/
 /out/
+# Built seed images (they hold credentials).
 *.iso
 *.img
 *.qcow2
 # Site data belongs in the operator's own (private) location, never here.
 /site/
 /sites/
+# Secret files an operator keeps next to a site: password hashes, tokens, authorized keys and environment files.
 password-hash
 *.token
 *.hash
 authorized_keys
 .env
 .env.*
+# The example site's env files are public on purpose.
 !examples/**/*.env
 # Test fixtures: public throwaway values (listed in .hygiene-allowlist), not real secrets.
 !tests/fixtures/password-hash
@@ -21,6 +25,7 @@ authorized_keys
 # Test scratch
 /tests/.tmp/
 /tests/vm/.work/
+# Python and download caches.
 __pycache__/
 *.pyc
 /.cache/

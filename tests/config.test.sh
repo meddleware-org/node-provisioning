@@ -7,10 +7,14 @@ source "${NP_LIB}/log.sh"
 # shellcheck source=../lib/config.sh
 source "${NP_LIB}/config.sh"
 
+# good <type> <value>: the value must be accepted by the schema type.
 good() { check "type ${1} accepts '${2}'" np_check_type "$1" "$2"; }
+# nope <type> <value>: the value must be rejected (run in a subshell, because a rejection can stop the shell).
 nope() { check "type ${1} rejects '${2}'" bash -c '! np_check_type "$0" "$1"' "$1" "$2"; }
+# The subshell needs the functions under test.
 export -f np_check_type np_is_ipv4
 
+# Each line pairs accepted and rejected values for a type: out-of-range and zero-padded octets, a missing octet, a prefix above 32, glob characters in a serial, and so on.
 good ipv4 192.0.2.10;      nope ipv4 192.0.2.256;   nope ipv4 192.0.2.01;   nope ipv4 192.0.2
 good cidr4 192.0.2.0/24;   nope cidr4 192.0.2.0/33; nope cidr4 192.0.2.0
 good host node1;           good host a.example.invalid; nope host 'a b';       nope host '-bad'
@@ -30,13 +34,16 @@ good list:text 'a,b,c';    good list:text '';       nope list:ipv4 '192.0.2.1,ba
 declare -gA NP_TYPE=() NP_REQ=() NP_DEF=() NP_SECRET=() NP_SCOPE=() CFG=()
 np_schema_load "${ROOT}/schema/site.schema.tsv" site
 f="${T_TMP}/s.env"
+# try <content>: write the content to a file and parse it with np_load_file in a subshell; the status says whether the parser accepted it.
 try() { # content -> status of np_load_file in a subshell
   printf '%b' "$1" >"${f}"
   ( np_load_file "${f}" site "${T_TMP}" ) >/dev/null 2>&1
 }
+# The parser accepts a valid key, comments and blank lines, and CRLF line endings.
 check "parser accepts a valid key"        try 'ADMIN_USER=admin\n'
 check "parser accepts comments and blanks" try '# c\n\nADMIN_USER=admin\n'
 check "parser strips CRLF line endings"   try 'ADMIN_USER=admin\r\n'
+# And rejects an unknown key, a key of the other scope, a duplicate, a line that is not KEY=value, leading white space and a bad value.
 for case in 'FOO=bar\n' 'HOSTNAME=node1\n' 'ADMIN_USER=a\nADMIN_USER=b\n' 'not a pair\n' 'ADMIN_USER= admin\n' 'ADMIN_USER=Admin\n' 'lower=x\n'; do
   if try "${case}"; then bad "parser rejects ${case%%\\n*}"; else ok "parser rejects ${case%%\\n*}"; fi
 done

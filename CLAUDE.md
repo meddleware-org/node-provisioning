@@ -56,6 +56,12 @@ bash scripts/check-versions.sh       # VERSION vs tag (on a tag push also needs 
 bash tests/vm/run-vm-test.sh <ubuntu-live-server.iso> [probe install negative reinstall]   # manual: KVM, OVMF, QEMU
 ```
 
+## Documentation rules (workspace documentation standard, D144)
+
+Every file has a header, every shell or Python function a comment above it, and every key or block of a YAML, TOML or workflow file a comment saying why. Comments
+say why, not only what. `node scripts/check-docs.mjs --report node-provisioning` (in the workspace repository) is the gate. The example site's YAML fragments are
+included in rendered seeds, so a change to their comments changes `tests/golden/` (`UPDATE_GOLDEN=1 bash tests/render.test.sh`). See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Conventions
 
 - `set -euo pipefail`; quote everything; no `eval`; no `set -x`.

@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 # node-provisioning: render and validate an autoinstall NoCloud seed, build it into an image,
 # and run the node-setup scripts. See README.md and SECURITY.md before building a seed.
+# Exit codes: 0 on success, 1 when a step fails (np_die), 2 for a missing or unknown command. Environment: NP_TARGET (default
+# # ubuntu-server-26.04) and NP_TARGET_DIR (a test hook), plus the secrets the render commands read (see SECURITY.md).
+# # Stop on any error, any unset variable, and any failure inside a pipe, so a step can never be skipped silently.
 set -euo pipefail
 
+# Resolve the script through symlinks, so the repository root is found wherever the command is linked from.
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+# The repository root, and the directory of the shared shell libraries.
 NP_ROOT="$(cd "$(dirname "${SELF}")/.." && pwd)"
 NP_LIB="${NP_ROOT}/lib"
+# The target operating system (a directory under targets/) and its directory; the second is overridable so the tests can point at a fixture.
 : "${NP_TARGET:=ubuntu-server-26.04}"
 : "${NP_TARGET_DIR:=${NP_ROOT}/targets/${NP_TARGET}}"   # NP_TARGET_DIR: test hook
+# The libraries and the node-setup scripts read these.
 export NP_ROOT NP_LIB NP_TARGET NP_TARGET_DIR
 
+# The libraries: logging, strict configuration, rendering, and the seed (render, validate, build).
 # shellcheck source=lib/log.sh
 source "${NP_LIB}/log.sh"
 # shellcheck source=lib/config.sh
@@ -18,9 +26,12 @@ source "${NP_LIB}/config.sh"
 source "${NP_LIB}/render.sh"
 # shellcheck source=lib/seed.sh
 source "${NP_LIB}/seed.sh"
+# Remove every temporary directory on exit, however the command ends.
 trap np_cleanup EXIT
+# Everything written (seed, scratch files) is private to the caller: a seed holds credentials.
 umask 077
 
+# Print the command summary; used for no command, an unknown one and --help.
 usage() {
   cat <<'USAGE'
 Usage: node-provisioning <command> [options]
@@ -36,10 +47,13 @@ WARNING: a built seed erases disks when used and contains credentials. Read SECU
 USAGE
 }
 
+# The first argument is the command; no command is a usage error (status 2).
 cmd="${1:-}"
 if [[ -z "${cmd}" ]]; then usage; exit 2; fi
 shift
+# Option values, empty until given; STEP defaults to running both phases.
 SITE=""; NODE=""; OUT=""; FORMAT=""; STEP="all"; NP_STRICT=0; scratch=""
+# Parse the options. A value-taking option without a value stops with its own message.
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --site)   SITE="${2:?--site needs a value}"; shift 2 ;;
@@ -52,26 +66,34 @@ while [[ $# -gt 0 ]]; do
     *) np_die "unknown option: $1" ;;
   esac
 done
+# Validation reads the strict flag from the environment.
 export NP_STRICT
 
+# need <VAR>...: stop unless each named option variable was given; the message names the option, never a value.
 need() { local v; for v in "$@"; do [[ -n "${!v}" ]] || np_die "missing required option --${v,,}"; done; }
 
+# Dispatch. Every command that reads a site first loads and type-checks it (np_prepare) and then gathers the secrets by path.
 case "${cmd}" in
+  # Print the version file.
   version) cat "${NP_ROOT}/VERSION" ;;
+  # Write user-data and meta-data for one node into the output directory.
   render)
     need SITE NODE OUT
     np_prepare "${SITE}" "${NODE}"; np_collect_secrets
     np_render_seed "${OUT}" ;;
+  # Render into a scratch directory (removed on exit) and run every validator over it; nothing is kept.
   validate)
     need SITE NODE
     np_prepare "${SITE}" "${NODE}"; np_collect_secrets
     np_mktemp_dir scratch
     np_render_seed "${scratch}"; np_validate_seed "${scratch}" "${NP_STRICT}"
     np_ok "validation passed" ;;
+  # Render and then build the seed image (iso, img or floppy).
   build-seed)
     need SITE NODE FORMAT OUT
     np_prepare "${SITE}" "${NODE}"; np_collect_secrets
     np_build_seed "${FORMAT}" "${OUT}" ;;
+  # Run the node-setup scripts on this machine. With a site, its non-secret values are exported so the scripts read them; secrets stay out of the environment.
   node-setup)
     if [[ -n "${SITE}" ]]; then
       need NODE
@@ -79,7 +101,9 @@ case "${cmd}" in
       for k in "${!CFG[@]}"; do [[ "${NP_SECRET[${k}]}" == yes ]] || export "${k}=${CFG[${k}]}"; done
     fi
     exec bash "${NP_TARGET_DIR}/node-setup/run.sh" "${STEP}" ;;
+  # Scan this repository for values that would identify a site (the public-repository rule); an optional site file lists extra values to look for.
   check-hygiene)
     exec bash "${NP_ROOT}/scripts/check-public-hygiene.sh" ${SITE:+--site "${SITE}"} ;;
+  # Anything else is a usage error.
   *) usage; exit 2 ;;
 esac

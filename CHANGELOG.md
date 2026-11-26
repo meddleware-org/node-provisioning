@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+
+- Documentation pass (workspace documentation standard): every file has a header and line-level comments, and every function a comment above it.
+  `CONTRIBUTING.md` is new. The example site's YAML fragments are commented, so the golden renders in `tests/golden/` gain those comment lines and
+  a new content-derived instance id; no value changed. Two stale statements were corrected: `tests/run-order.test.sh` said 05 was a reported failure
+  (it is fatal, like 00-04 and 08), and the VM harness's header listed `scrub` among the default scenarios (it is not).
+- `tests/ufw.test.sh`: an unused placeholder scenario (it checked nothing, and a `sed` deleted it from the driver before it ran) is removed.
+
 ## [0.0.3] - 2026-11-12
 
 ### Fixed

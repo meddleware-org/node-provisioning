@@ -29,24 +29,34 @@ autoinstall:
     fallback: abort
 
   # Network used while the installer runs (for example when the switch port carries a tagged VLAN).
+  # A netplan document (version 2). The installer's network while it runs; the rendered seed embeds this file as it is.
   network:
+    # Netplan schema version 2.
     version: 2
+    # systemd-networkd applies it.
     renderer: networkd
+    # The physical port: no automatic addressing, because the VLAN below carries the address.
     ethernets:
       enp1s0:
         dhcp4: false
         dhcp6: false
+    # A tagged VLAN on that port (the switch port carries VLAN 100 tagged).
     vlans:
+      # The VLAN interface's name follows the port and the tag.
       enp1s0.100:
+        # The VLAN tag.
         id: 100
         link: enp1s0
         dhcp4: false
         dhcp6: false
+        # The node's address with its prefix length; it must equal NODE_IP in the node file (the validator checks that). 192.0.2.0/24 is a documentation range.
         addresses:
           - 192.0.2.10/24
+        # The default route through the gateway.
         routes:
           - to: default
             via: 192.0.2.1
+        # The resolver the installer uses.
         nameservers:
           addresses:
             - 192.0.2.53
@@ -218,9 +228,13 @@ autoinstall:
       mkdir -p /target/etc/netplan
       cat > /target/etc/netplan/10-site.yaml <<'NETPLAN'
       # Netplan for the installed system: an LACP bond carrying one tagged VLAN.
+      # A netplan document (version 2). Written to the node as /etc/netplan/<NETPLAN_FILE_NAME>; it must contain the node's address.
       network:
+        # Netplan schema version 2.
         version: 2
+        # systemd-networkd applies it.
         renderer: networkd
+        # The two physical ports that join the bond: no addressing of their own.
         ethernets:
           enp1s0:
             dhcp4: false
@@ -228,27 +242,33 @@ autoinstall:
           enp2s0:
             dhcp4: false
             dhcp6: false
+        # The LACP bond (802.3ad) over both ports.
         bonds:
           bond0:
             interfaces:
               - enp1s0
               - enp2s0
+            # Fast LACP rate, hashing on layer 3 and 4 so flows spread across both links, and a 100 ms link check.
             parameters:
               mode: 802.3ad
               lacp-rate: fast
               transmit-hash-policy: layer3+4
               mii-monitor-interval: 100
+        # The tagged VLAN on the bond; the node's address lives here.
         vlans:
           bond0.100:
             id: 100
             link: bond0
             dhcp4: false
             dhcp6: false
+            # The node's address with its prefix length (a documentation range).
             addresses:
               - "192.0.2.10/24"
+            # The default route through the gateway.
             routes:
               - to: default
                 via: 192.0.2.1
+            # The resolver and the search domain (`.invalid` can never resolve, so the example cannot leak a real name).
             nameservers:
               addresses:
                 - 192.0.2.53

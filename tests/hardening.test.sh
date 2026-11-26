@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # 08-hardening.sh in a container: files, modes, idempotence, the forwarding switch, and rollback when sshd -t fails.
 source "$(dirname "$0")/lib.sh"
+# Find a container runtime; without one the test is skipped, with a message.
 RT=""; for c in podman docker; do command -v "${c}" >/dev/null 2>&1 && { RT="${c}"; break; }; done
+# The image the script runs in (overridable).
 IMG="${NP_TEST_IMAGE:-docker.io/library/ubuntu:26.04}"
 if [[ -z "${RT}" ]]; then echo "  skip: no container runtime (podman or docker)"; exit 0; fi
 if ! "${RT}" image inspect "${IMG}" >/dev/null 2>&1 && ! "${RT}" pull -q "${IMG}" >/dev/null 2>&1; then echo "  skip: cannot obtain ${IMG}"; exit 0; fi
+# Stubs that record their calls instead of acting: systemctl, sysctl and sshd (which can be made to fail).
 mkdir -p "${T_TMP}/stubs"
 for c in systemctl sysctl; do printf '#!/bin/sh\necho "%s $*" >>/tmp/calls.log\nexit 0\n' "${c}" >"${T_TMP}/stubs/${c}"; done
 cat >"${T_TMP}/stubs/sshd" <<'STUB'
@@ -14,14 +17,19 @@ echo "sshd $*" >>/tmp/calls.log
 exit 0
 STUB
 chmod +x "${T_TMP}/stubs/"*
+# The driver that runs inside the container.
 cat >"${T_TMP}/driver.sh" <<'DRV'
 #!/bin/bash
 export PATH="/stubs:${PATH}"
+# The script under test.
 S=/script/08-hardening.sh
 : >/tmp/calls.log
 mkdir -p /etc/ssh/sshd_config.d /etc/sysctl.d /etc/apt/apt.conf.d /var/log/installer
+# A fake installer copy of the seed holding a password and a token, to be redacted.
 printf 'autoinstall:\n  identity:\n    realname: \x27\x27\n    username: x\n    password: %s\n  ubuntu-pro:\n    token: "%s"\n  keep: "value"\n' 'HASHVALUE-1' 'TOKENVALUE-1' >/var/log/installer/autoinstall-user-data; chmod 400 /var/log/installer/autoinstall-user-data
+# r <name> <status>: print a scenario verdict.
 r() { echo "RESULT $1 $([[ $2 == 0 ]] && echo PASS || echo FAIL)"; }
+# First run: the files, their modes and contents.
 bash "${S}" >/tmp/o1 2>&1; r first_run_ok $?
 [[ "$(stat -c %a /etc/ssh/sshd_config.d/99-hardening.conf)" == 644 ]]; r sshd_conf_mode $?
 grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config.d/99-hardening.conf && grep -q '^PermitRootLogin no' /etc/ssh/sshd_config.d/99-hardening.conf \
@@ -37,25 +45,31 @@ grep -q '"kubelet";' /etc/apt/apt.conf.d/52unattended-upgrades-local && grep -q 
 ! grep -q -E 'HASHVALUE|TOKENVALUE' /var/log/installer/autoinstall-user-data; r installer_copy_redacted $?
 grep -q 'password: "<redacted>"' /var/log/installer/autoinstall-user-data && grep -q 'token: "<redacted>"' /var/log/installer/autoinstall-user-data && grep -q 'keep: "value"' /var/log/installer/autoinstall-user-data; r redaction_keeps_the_rest $?
 [[ "$(stat -c %a /var/log/installer/autoinstall-user-data)" == 400 ]]; r installer_copy_mode_kept $?
+# Second run: nothing may change and nothing may be reloaded.
 sha256sum /etc/ssh/sshd_config.d/99-hardening.conf /etc/sysctl.d/90-hardening.conf /etc/apt/apt.conf.d/52unattended-upgrades-local /var/log/installer/autoinstall-user-data >/tmp/h1
 : >/tmp/calls.log; bash "${S}" >/tmp/o2 2>&1; r second_run_ok $?
 sha256sum /etc/ssh/sshd_config.d/99-hardening.conf /etc/sysctl.d/90-hardening.conf /etc/apt/apt.conf.d/52unattended-upgrades-local /var/log/installer/autoinstall-user-data >/tmp/h2
 cmp -s /tmp/h1 /tmp/h2; r idempotent_files $?
 ! grep -q -E 'sshd -t|reload|sysctl' /tmp/calls.log; r idempotent_no_reload $?
+# The forwarding switch, and its validation.
 SSH_ALLOW_TCP_FORWARDING=true bash "${S}" >/tmp/o3 2>&1; r forwarding_opt_in $?
 grep -q '^AllowTcpForwarding yes' /etc/ssh/sshd_config.d/99-hardening.conf; r forwarding_yes_written $?
 SSH_ALLOW_TCP_FORWARDING=maybe bash "${S}" >/tmp/o4 2>&1; [[ $? -ne 0 ]]; r forwarding_value_validated $?
+# Rollback: sshd rejects the new configuration, so the previous content is restored (or the new file removed) and the script fails.
 # rollback: sshd rejects the new config -> previous content restored, script fails
 cp /etc/ssh/sshd_config.d/99-hardening.conf /tmp/before
 touch /tmp/sshd-fail; SSH_ALLOW_TCP_FORWARDING=false bash "${S}" >/tmp/o5 2>&1; [[ $? -ne 0 ]]; r rejected_config_fails $?
 cmp -s /tmp/before /etc/ssh/sshd_config.d/99-hardening.conf; r rejected_config_rolled_back $?
 rm -f /etc/ssh/sshd_config.d/99-hardening.conf; SSH_ALLOW_TCP_FORWARDING=false bash "${S}" >/tmp/o6 2>&1; [[ $? -ne 0 && ! -e /etc/ssh/sshd_config.d/99-hardening.conf ]]; r rejected_fresh_config_removed $?
 DRV
+# Run the driver as root in a container with no network and only the capabilities the script needs.
 OUT="$("${RT}" run --rm --network=none --cap-drop=all --cap-add=CHOWN --cap-add=FOWNER --cap-add=DAC_OVERRIDE \
   --security-opt no-new-privileges -v "${T_TMP}/stubs:/stubs:ro" -v "${T_TMP}/driver.sh:/driver.sh:ro" \
   -v "${ROOT}/targets/ubuntu-server-26.04/node-setup:/script:ro" "${IMG}" bash /driver.sh 2>&1)"
+# Each scenario becomes one check.
 while read -r _ name verdict; do
   if [[ "${verdict}" == PASS ]]; then ok "hardening: ${name}"; else bad "hardening: ${name}"; fi
 done < <(grep '^RESULT ' <<<"${OUT}")
+# All scenarios must have run.
 [[ "$(grep -c '^RESULT ' <<<"${OUT}")" -ge 22 ]] || bad "hardening: scenarios did not all run"
 finish

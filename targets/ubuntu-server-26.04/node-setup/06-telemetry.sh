@@ -8,9 +8,14 @@
 #
 # Idempotent — safe to re-run.
 
+# Exit codes: 0 when done (each service step is best effort: a missing service is skipped), 1 for an invalid host name in TELEMETRY_HOSTS_EXTRA.
+# # Environment: TELEMETRY_HOSTS_EXTRA (comma-separated host names to add to the block list).
+# # Stop on any error, unset variable or failed pipe.
 set -euo pipefail
 
+# info <message>: a note about a step that was skipped.
 info() { echo "  [telemetry] $*"; }
+# ok <message>: a step that was applied.
 ok()   { echo "  [OK] $*"; }
 
 echo "==> Disabling OS telemetry and phone-home services"
@@ -73,16 +78,23 @@ fi
 # endpoints of third-party software) comes from TELEMETRY_HOSTS_EXTRA (comma-separated host names).
 # Idempotent and MERGING: each missing entry is added individually, so entries the installer already wrote
 # neither suppress nor duplicate the rest.
+# The heading written once above the entries this script adds to /etc/hosts.
 HOSTS_MARKER="# Telemetry / analytics endpoint blocks"
+# The Ubuntu endpoints blocked everywhere.
 DEFAULT_HOSTS="motd.ubuntu.com metrics.ubuntu.com report.ubuntu.com"
+# Site-specific endpoints: the comma-separated setting becomes a space-separated list.
 EXTRA_HOSTS="${TELEMETRY_HOSTS_EXTRA:-}"
 EXTRA_HOSTS="${EXTRA_HOSTS//,/ }"
+# The number of entries added this run (zero on a re-run).
 added=0
+# First check every name (a bad one stops the run before /etc/hosts is touched), then add the missing ones.
 for host in ${DEFAULT_HOSTS} ${EXTRA_HOSTS}; do
   [[ "${host}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { echo "  [FAIL] invalid host name in TELEMETRY_HOSTS_EXTRA" >&2; exit 1; }
 done
 for host in ${DEFAULT_HOSTS} ${EXTRA_HOSTS}; do
+  # Add an entry only if it is not already there, so a re-run adds nothing and nothing is duplicated.
   if ! grep -qE "^127\.0\.0\.1[[:space:]]+${host//./\\.}([[:space:]]|\$)" /etc/hosts; then
+    # The first addition also writes the heading, once.
     if (( added == 0 )) && ! grep -qF "${HOSTS_MARKER}" /etc/hosts; then
       printf '\n%s (added by node-provisioning)\n' "${HOSTS_MARKER}" >> /etc/hosts
     fi

@@ -53,4 +53,4 @@ Targets live under `targets/<distro-version>/` so other operating systems can be
 [docs/seed-delivery.md](docs/seed-delivery.md) · [docs/node-setup.md](docs/node-setup.md) ·
 [docs/verification.md](docs/verification.md)
 
-Licence: BSD Zero Clause (0BSD), see [LICENSE](LICENSE).
+How to run the checks and propose a change: [CONTRIBUTING.md](CONTRIBUTING.md). Licence: BSD Zero Clause (0BSD), see [LICENSE](LICENSE).

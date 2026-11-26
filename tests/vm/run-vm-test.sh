@@ -2,28 +2,37 @@
 # Manual VM test matrix for node-provisioning (NOT part of CI: needs KVM, OVMF, QEMU, xorriso and an Ubuntu Server ISO).
 #
 #   tests/vm/run-vm-test.sh <ubuntu-live-server.iso> [scenario ...]
-#   scenarios: probe install setup scrub negative reinstall inspect   (default: all but inspect, in that order)
+#   scenarios: probe install setup scrub negative reinstall inspect   (default: probe install setup negative reinstall, in that order)
 #
 # The VM has two emulated NVMe disks (OS, data) and a third disk with stale labelled partitions (standing in for a disk
 # left over from an earlier install). Everything lives in tests/vm/.work (git-ignored); an ephemeral SSH key is generated
 # per run. Results are printed as "RESULT <name> PASS|FAIL" lines plus evidence files in the work directory.
+# Unset variables and failed pipes are errors; a failing command is not (a failed check must not stop the matrix).
 set -uo pipefail
+# The repository root and the work directory (git-ignored; VM_WORK overrides it).
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 W="${VM_WORK:-${ROOT}/tests/vm/.work}"
+# The first argument is the Ubuntu Server live ISO; the rest name the scenarios to run.
 ISO="${1:?usage: run-vm-test.sh <ubuntu-live-server.iso> [scenario ...]}"; shift
 SCENARIOS=("$@"); [[ ${#SCENARIOS[@]} -gt 0 ]] || SCENARIOS=(probe install setup negative reinstall)
+# The serial numbers given to the three emulated disks, and the host port forwarded to the VM's SSH.
 OS_SERIAL=TESTOS0001; DATA_SERIAL=TESTDATA0001; HDD_SERIAL=TESTHDD0001
 SSH_PORT="${VM_SSH_PORT:-2222}"
+# The UEFI firmware (code and a variable store template).
 OVMF_CODE=/usr/share/OVMF/OVMF_CODE_4M.fd; OVMF_VARS_SRC=/usr/share/OVMF/OVMF_VARS_4M.fd
 mkdir -p "${W}"
 
+# say <message>: a progress line on stderr.
 say() { echo "[vm] $*" >&2; }
+# result <name> <status>: print `RESULT <name> PASS` for status 0, FAIL otherwise.
 result() { if [[ "$2" == 0 ]]; then echo "RESULT $1 PASS"; else echo "RESULT $1 FAIL"; fi; }
 # eq <name> <actual> <expected>: PASS when equal. ok_if <name> <command...>: PASS when the command succeeds.
 eq() { local rc=1; [[ "$2" == "$3" ]] && rc=0; result "$1" "${rc}"; return "${rc}"; }
+# ok_if <name> <command>...: PASS when the command succeeds.
 ok_if() { local n="$1" rc=0; shift; "$@" >/dev/null 2>&1 || rc=1; result "${n}" "${rc}"; return "${rc}"; }
 
 # ── disks ──────────────────────────────────────────────────────────────────────
+# new_disks: fresh OS and data disk images, the stale disk and the UEFI variables.
 new_disks() { # fresh OS, data and stale-HDD images and UEFI vars
   rm -f "${W}"/os.qcow2 "${W}"/data.qcow2 "${W}"/hdd.img "${W}"/OVMF_VARS.fd
   qemu-img create -q -f qcow2 "${W}/os.qcow2" 16G
@@ -31,6 +40,7 @@ new_disks() { # fresh OS, data and stale-HDD images and UEFI vars
   cp "${OVMF_VARS_SRC}" "${W}/OVMF_VARS.fd"
   make_stale_hdd
 }
+# make_stale_hdd: a raw 2 GB image holding three ext4 partitions labelled like the data layout of an older install.
 make_stale_hdd() { # a raw 2G image holding three ext4 partitions labelled like the data layout of an older install
   truncate -s 2G "${W}/hdd.img"
   printf 'label: gpt\nsize=200M, name=etcd\nsize=300M, name=longhorn-nvme\nname=persistent\n' | sfdisk -q "${W}/hdd.img" >/dev/null
@@ -43,11 +53,15 @@ make_stale_hdd() { # a raw 2G image holding three ext4 partitions labelled like 
 }
 # Disk contents are compared semantically with `qemu-img compare` against a copy taken before the operation (the VM must be
 # stopped). Never hash through `qemu-img convert ... -`: it writes a file named "-", not stdout.
+# disk_snapshot <image>: keep a sparse copy of the image, to compare with later.
 disk_snapshot() { cp --sparse=always "$1" "$1.before"; }
+# disk_unchanged <image>: succeed when the image still equals its snapshot (the VM must be stopped).
 disk_unchanged() { qemu-img compare "$1.before" "$1" >/dev/null 2>&1; }
 
 # ── seed and site ──────────────────────────────────────────────────────────────
+# ensure_key: create the run's throwaway SSH key once.
 ensure_key() { [[ -f "${W}/key" ]] || ssh-keygen -q -t ed25519 -N '' -C vmtest@example.invalid -f "${W}/key"; }
+# stage_site <os-id-serial> <data-id-serial>: a private copy of the test site with the real disk serials, the throwaway key and the fixture password hash.
 stage_site() { # <os-id-serial> <data-id-serial>
   rm -rf "${W}/site"; mkdir -p "${W}"
   cp -r "${ROOT}/tests/vm/site" "${W}/site"
@@ -56,14 +70,17 @@ stage_site() { # <os-id-serial> <data-id-serial>
   cp "${ROOT}/tests/fixtures/password-hash" "${W}/site/hash"; chmod 600 "${W}/site/hash"
   echo 'PASSWORD_HASH_FILE=hash' >>"${W}/site/nodes/vm1.env"
 }
+# build_seed: build the seed ISO from the staged site with the CLI under test.
 build_seed() { # <out-iso-dir>
   rm -rf "${W}/seed"; "${ROOT}/bin/node-provisioning" build-seed --site "${W}/site" --node vm1 --format iso --out "${W}/seed" >"${W}/build-seed.log" 2>&1
 }
+# extract_boot_files: the installer's kernel and initrd from the ISO, once; the VM boots them directly so the kernel command line can ask for the autoinstall.
 extract_boot_files() {
   [[ -f "${W}/vmlinuz" ]] || xorriso -osirrox on -indev "${ISO}" -extract /casper/vmlinuz "${W}/vmlinuz" -extract /casper/initrd "${W}/initrd" >/dev/null 2>&1
 }
 
 # ── qemu ───────────────────────────────────────────────────────────────────────
+# qemu_base: the QEMU command shared by every boot, in $QEMU: KVM, UEFI, two NVMe disks with their serials, the stale disk and user-mode networking with SSH forwarded.
 qemu_base() {
   QEMU=(qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m 4096 -machine q35 -display none
     -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}" -drive "if=pflash,format=raw,file=${W}/OVMF_VARS.fd"
@@ -72,6 +89,7 @@ qemu_base() {
     -drive "if=none,id=hdd,file=${W}/hdd.img,format=raw" -device "virtio-blk-pci,drive=hdd,serial=${HDD_SERIAL}"
     -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22")
 }
+# run_installer <seed-iso> <serial-log> [stop-regex]: run the installer; returns when it stops, reboots (-no-reboot) or the pattern shows in the serial log.
 run_installer() { # <seed-iso> <serial-log> [stop-regex]: returns when the installer stops, reboots (-no-reboot) or the pattern shows
   qemu_base
   local stop="${3:-}" pid
@@ -86,6 +104,7 @@ run_installer() { # <seed-iso> <serial-log> [stop-regex]: returns when the insta
   done
   wait "${pid}" 2>/dev/null || true
 }
+# boot_installed: start the installed system in the background and wait for SSH and for boot to finish; non-zero when it never comes up.
 boot_installed() { # background; waits for ssh
   qemu_base
   rm -f "${W}/qemu.pid"
@@ -98,7 +117,9 @@ boot_installed() { # background; waits for ssh
   for i in $(seq 1 12); do vmssh true >/dev/null 2>&1 && return 0; sleep 5; done
   return 1
 }
+# vmssh <command>: run a command in the VM over SSH as the administrator (key only, no host-key checks: the VM is throwaway).
 vmssh() { ssh -i "${W}/key" -p "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes -o LogLevel=ERROR nodeadmin@127.0.0.1 "$@"; }
+# stop_vm: ask the VM to power off, then make sure the process is really gone (a dying VM still holds the disks and the port).
 stop_vm() { # ask the VM to power off, then make sure the process is really gone (a dying VM still holds the disks and the port)
   local pid i
   [[ -f "${W}/qemu.pid" ]] || return 0
@@ -111,6 +132,7 @@ stop_vm() { # ask the VM to power off, then make sure the process is really gone
 }
 
 # ── scenarios ──────────────────────────────────────────────────────────────────
+# s_probe: learn the real udev ID_SERIAL strings of the emulated disks from the installer environment.
 s_probe() { # learn the real udev ID_SERIAL strings of the emulated disks from the installer environment
   new_disks; ensure_key; extract_boot_files
   rm -rf "${W}/probe"; mkdir -p "${W}/probe"
@@ -134,8 +156,10 @@ UD
   printf 'OS_ID=%s\nDATA_ID=%s\n' "${OS_ID}" "${DATA_ID}" >"${W}/idserials"
   ok_if probe_found_distinct_serials test -n "${OS_ID}" -a -n "${DATA_ID}" -a "${OS_ID}" != "${DATA_ID}"
 }
+# load_ids: read the serials the probe found (the probe scenario must have run).
 load_ids() { [[ -f "${W}/idserials" ]] || { say "run the probe scenario first"; return 1; }; . "${W}/idserials"; }
 
+# s_install: install onto the OS disk with the data disk untouched, then check the installed system: host name, sudo, no swap, time zone, root on the OS-serial disk, key-only SSH, secrets handling, network and telemetry settings.
 s_install() {
   load_ids || return 1; new_disks; ensure_key; extract_boot_files
   stage_site "${OS_ID}" "${DATA_ID}"; build_seed; ok_if seed_built test -f "${W}/seed/nocloud-seed.iso" || return 1
@@ -170,6 +194,7 @@ s_install() {
   stop_vm
 }
 
+# s_negative: a seed whose OS serial matches no disk must abort BEFORE any disk is touched.
 s_negative() { # a seed whose OS serial matches no disk must abort BEFORE any disk is touched
   load_ids || return 1; new_disks; ensure_key; extract_boot_files
   stage_site "NoSuchDisk_000000" "${DATA_ID}"; build_seed
@@ -180,6 +205,7 @@ s_negative() { # a seed whose OS serial matches no disk must abort BEFORE any di
   ok_if data_disk_identical_after_abort disk_unchanged "${W}/data.qcow2"
 }
 
+# s_reinstall: install, create data on the data disk with node-setup 00, reinstall the OS: the data must survive.
 s_reinstall() { # install, create data on the data disk with node-setup 00, reinstall the OS: the data must survive
   load_ids || return 1
   s_install >/dev/null 2>&1 || true
@@ -208,6 +234,7 @@ s_reinstall() { # install, create data on the data disk with node-setup 00, rein
   stop_vm
 }
 
+# stage_np: copy the working tree (without .git, caches, VM work) and the site (without the hash file) into the VM.
 stage_np() { # copy the working tree (without .git, caches, VM work) and the site (without the hash file) into the VM
   tar -C "${ROOT}" --exclude=.git --exclude=.cache --exclude=tests/vm/.work -czf "${W}/np.tgz" .
   tar -C "${W}/site" --exclude=hash -czf "${W}/site.tgz" .
@@ -215,6 +242,7 @@ stage_np() { # copy the working tree (without .git, caches, VM work) and the sit
   vmssh 'rm -rf /tmp/np /tmp/site && mkdir /tmp/np /tmp/site && tar -xzf /tmp/np.tgz -C /tmp/np && tar -xzf /tmp/site.tgz -C /tmp/site'
 }
 
+# s_setup: the real node setup (00-08) inside the installed VM; needs the internet through QEMU's NAT. Checks disks, firewall, SSH, sysctl, the pinned repository keys, held packages and idempotence.
 s_setup() { # the real node setup (00-08) inside the installed VM; needs the internet through QEMU's NAT
   load_ids || return 1
   boot_installed || { result setup_vm_boots 1; return 1; }
@@ -258,6 +286,7 @@ s_setup() { # the real node setup (00-08) inside the installed VM; needs the int
   stop_vm
 }
 
+# s_scrub: on the installed VM, preflight with the site's interface name, then the redaction of the installer's copy of the seed.
 s_scrub() { # on the installed VM: preflight with the site's interface name, then the redaction of the installer's copy of the seed
   load_ids || return 1
   stage_site "${OS_ID}" "${DATA_ID}"
@@ -276,12 +305,14 @@ s_scrub() { # on the installed VM: preflight with the site's interface name, the
   stop_vm
 }
 
+# s_inspect: boot the installed system and run $VM_CMD (read-only investigation).
 s_inspect() { # boot the installed system and run $VM_CMD (read-only investigation)
   boot_installed || { say "could not boot"; return 1; }
   vmssh "${VM_CMD:-uname -a}"
   stop_vm
 }
 
+# Run each requested scenario; a non-zero return is reported but does not stop the matrix.
 for s in "${SCENARIOS[@]}"; do
   say "scenario: ${s}"
   "s_${s}" || say "scenario ${s} returned non-zero"

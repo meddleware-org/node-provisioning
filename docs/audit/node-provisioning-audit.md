@@ -4,6 +4,7 @@
 **Project:** `repos/node-provisioning` — renders and validates an unattended-installer seed and runs the node-setup scripts for a Kubernetes node
 **Project type:** Shell and Python tooling (host provisioning)
 **Template:** AUDIT_TEMPLATE.md (2026-11-01) + AUDIT_TEMPLATE_HOST.md (2026-10-22) + AUDIT_TEMPLATE_OPS.md (2026-10-08, script-safety rows only)
+**Added 2026-11-26 (Part B documentation pass):** AUDIT_TEMPLATE_DOCS.md (2026-11-20); AUDIT_TEMPLATE_RFC.md (2026-11-19), ●: the seed formats, the repository keys; AUDIT_TEMPLATE_IOP.md (2026-11-19), ●: the open seed formats, the dependencies and exit; AUDIT_TEMPLATE_PRIV.md (2026-11-20), ●: the credential-bearing seed and the node's telemetry; AUDIT_TEMPLATE_CONF.md (2026-11-26), ●: the site configuration and its secrets.
 Not triggered: SUI and SUI_CLIENT (no chain interaction), IMG (no container image is built or deployed), TS/RS/GO (no such code), AUTH (the tool issues and verifies no tokens; it handles a password hash and an optional vendor token as opaque credentials, covered by HOST), PLATFORM (the cluster is audited with the workspace; node hardening is owned by HOST).
 **Targets:** Ubuntu Server 26.04 LTS, Subiquity autoinstall (installer schema pinned to tag 26.04.1), cloud-init NoCloud datasource; kubeadm-based single node with CRI-O, Cilium and Longhorn prerequisites
 **Destructive operations:** the installer erases exactly one disk, the OS disk, selected by udev `ID_SERIAL` (`match: {serial}`) after an early-commands guard confirms exactly one OS-serial disk and one data-serial disk; `00-data-disk.sh` partitions only the disk named by `DATA_DISK_SERIAL`, only when it holds no unrecognised data or `WIPE_DATA_DISK=1` is set; `05-ufw.sh` resets the firewall; `08-hardening.sh` rewrites SSH, sysctl and apt policy files
@@ -13,7 +14,7 @@ Not triggered: SUI and SUI_CLIENT (no chain interaction), IMG (no container imag
 **Review date:** 2026-10-22 (first pass, written during the extraction) · delta review 2026-11-05 (0.0.2; F22)
 **Reviewer:** Internal review
 **Severity ceiling:** High — the tool decides which disks are erased on a machine that holds the cluster's data, and produces artefacts that carry credentials.
-**Status:** first-pass baseline
+**Status:** first-pass baseline; Part B documentation pass 2026-11-26 (F23 and F24 RESOLVED)
 
 ---
 
@@ -24,7 +25,7 @@ site's values. The extraction changed how destructive decisions are made: disks 
 default, the installer aborts before touching storage when the identity is wrong, persistent data is recognised only on
 the named disk, and every failure of a security-establishing step is fatal with a fail-safe where it matters.
 
-Twenty-two findings are recorded. Twenty-one are resolved, with hermetic evidence (tests named below) and, where the behaviour
+Twenty-four findings are recorded. Twenty-three are resolved, with hermetic evidence (tests named below) and, where the behaviour
 needs a real installer, VM evidence (2026-10-22/23, Ubuntu Server 26.04.1). The first hardware run is the remaining
 evidence gate. One (F18) is an accepted design risk awaiting a maintainer decision.
 
@@ -246,6 +247,61 @@ them got "unbound variable". Hermetic tests had always set them. Found by the VM
 `01-preflight.sh` reported "data disk already provisioned (LABEL=persistent present)" whenever `blkid -L persistent` found the label on **any** disk, for example the previous install's disk. Invariant I3 (persistent data is recognised only on the named disk; foreign labels ignored) held in `00-data-disk.sh` but not in the preflight that reports the state to the operator, so a stale disk could make the preflight say the layout existed when the configured data disk was empty. The preflight now resolves the configured data disk, counts only its partitions (`${DATA_RESOLVED}p?N`), and warns, without counting, about the label on any other disk.
 **Evidence:** `tests/data-disk/preflight-driver.sh` — three scenarios (`data_layout_on_data_disk`, `stale_label_on_another_disk`, `layout_and_stale_label`) run in the container by `tests/preflight.test.sh` (now requires at least 11 scenario results); the full suite passed on 2026-11-05 (`bash tests/run.sh`: 17 files, 307 checks, 0 failed, shellcheck and hygiene included). Not covered: the VM matrix was not re-run for 0.0.2 (the harness exists; the change is in a script the VM `setup` scenario runs, but no run is recorded for it).
 
+### F23 — Drift: no `CONTRIBUTING.md`, most functions and tests undocumented, two stale statements
+**Severity:** Low   **Disposition:** RESOLVED (2026-11-26, unreleased)
+**Where:** the repository had no `CONTRIBUTING.md`; most shell functions, the workflows, the example fragments and the tests had no comments. Two statements had drifted from the code: the header of `tests/run-order.test.sh` called 05 a reported failure (it is fatal, like 00-04 and 08), and the header of `tests/vm/run-vm-test.sh` listed `scrub` among the default scenarios (the default list does not include it). `tests/ufw.test.sh` also carried a placeholder scenario that checked nothing and was deleted from the driver by a `sed`.
+**Remediation / evidence:** `CONTRIBUTING.md` is written; every file carries a header and line-level comments, and every function a comment above it (`node scripts/check-docs.mjs --report node-provisioning` in the workspace: every measured file meets the standard). The two statements are corrected and the dead scenario removed (the scenario count the test asserts, 16, is unchanged). The example fragments' comments reach the rendered seed, so `tests/golden/` was regenerated: only comment lines and the content-derived instance id changed (compared with comment lines removed).
+
+### F24 — A refused free-text value was repeated in the error
+**Severity:** Low   **Disposition:** RESOLVED (2026-11-26, unreleased)
+**Where:** `lib/config.sh::np_set`: a value that fails its type check was reported as `<key> is not a valid <type> (got '<value>')` unless the key was flagged secret.
+**Issue:** the free-text and path types accept any characters a person might type, including an address with a user name and password (for example in `PAUSE_IMAGE`). A mistake in such a value was printed back to the terminal and to any CI log.
+**Impact:** low: the text appears only on the operator's own terminal, and no key is defined to hold a credential. It breaks the platform's no-echo rule (D146) all the same.
+**Remediation / evidence:** `text`, `path` and `list:text` values are named by key and type only; the strictly shaped types (host, address, serial, size, version and so on) still echo, because the value is what the operator needs to fix and cannot carry a credential. The new check in `tests/validate-fail.test.sh` puts a stand-in secret in a refused `PAUSE_IMAGE` and fails on the old code.
+
+### Part B documentation pass (2026-11-26)
+
+Scope: every tracked file of the repository (the CLI, the libraries, the schemas, the target's autoinstall template and node-setup scripts, the examples, the tests, the VM harness, the workflows and the documents; 96 files, 63 measured by the documentation standard's file measure, 1 excluded) read against the workspace's `docs/operations/DOCUMENTATION_STANDARD.md` and annotated (Part B Phase 1, the thirty-first repository, shell and Python tooling); the DOCS, RFC, IOP, PRIV and CONF lenses applied for the first time.
+After: `bash tests/run.sh` (309 checks passed, 0 failed, with podman, so no container suite skipped), the workflows and `dependabot.yml` parse, and every shell file passes `bash -n`.
+The code diff is comment-only apart from F24 (`lib/config.sh` and its test) and the removed placeholder in `tests/ufw.test.sh`; the example fragments' comments change the golden renders as F23 says.
+**Not run here:** shellcheck (not installed on this machine; CI runs it over every script), the VM matrix (needs KVM and an ISO), and the release workflow.
+
+#### B.RFC-1 Standards inventory
+
+| Standard | Where | Evidence |
+| --- | --- | --- |
+| cloud-init `#cloud-config` and the NoCloud datasource (an `instance-id` in `meta-data`; a volume labelled `CIDATA`); the Subiquity autoinstall schema, pinned by commit and checksum and checked with JSON Schema (draft 7) | `lib/seed.sh`, `lib/validate.py`, `scripts/fetch-subiquity-schema.sh` | `tests/validator.test.sh`, the schema check in `validate` (CI fetches the schema) |
+| ISO 9660 with Rock Ridge and Joliet extensions, and FAT12/FAT32 images, for the seed | `lib/seed.sh::np_build_seed` | `tests/seed.test.sh` (labels, sizes, contents), `tests/reproducible.test.sh` |
+| netplan (YAML) fragments, checked with the YAML parser and `netplan generate` | `lib/seed.sh`, `lib/validate.py` | `tests/validate-fail.test.sh` |
+| OpenPGP public keys (RFC 9580) for the third-party apt repositories: fingerprint pinned, expiry and revocation checked | `targets/*/node-setup/repokey.sh` | `tests/repokey.test.sh` (real gpg, throwaway keys), the VM `setup` scenario |
+| Documentation address ranges (RFC 5737, and RFC 2544 for the pod network) and the reserved `.invalid` name (RFC 2606) in every example and test | `examples/`, `tests/`, `scripts/check-public-hygiene.sh` | the hygiene check, run in CI |
+| OCI image and distribution specifications for the release artifact; Sigstore keyless signing; GitHub build-provenance attestation | `.github/workflows/release.yml` | the release run, `SECURITY.md` |
+| Semantic Versioning and Keep a Changelog (conventions, not standards bodies' specifications) | `VERSION`, `CHANGELOG.md`, `scripts/check-versions.sh` | `scripts/check-versions.sh` in CI |
+
+**B.RFC-2 Non-final standards:** none. Ubuntu Server 26.04 and its installer are a vendor product, and the target is pinned to the installer tag the schema comes from. **B.RFC-3 Deviations:** none recorded; the site configuration is a plain `KEY=value` format of this project's own (the schema documents it), not a standard format, by design (it is parsed as data and never evaluated).
+
+#### B.IOP Interoperability, portability and exit
+
+- **Portability and exit:** the tool holds no person's data. Its inputs are plain text files an operator owns outside the repository; its outputs are standard NoCloud seeds (a CIDATA ISO or FAT image) that stock cloud-init and Subiquity read, and the installed node runs stock Ubuntu with distribution and upstream packages. An operator can stop using the tool and keep the node; a successor can regenerate a seed from the same site files or write one by hand.
+- **Open API and compatible competition:** the CLI (`render`, `validate`, `build-seed`, `node-setup`, `check-hygiene`, `version`) and the configuration schema are documented (`README.md`, `docs/configuration.md`, `docs/inventory.md`); the target directory layout lets another operating system be added without touching shared code. There is no written deprecation policy beyond the platform's rule that releases before mainnet are patch bumps with the changelog naming what broke.
+- **Dependencies (exit register):** Canonical (Ubuntu images, the package mirrors, Subiquity and its schema, Ubuntu Pro when a token is given); the Kubernetes package repository (`pkgs.k8s.io`); the openSUSE Build Service for CRI-O; GitHub (the pinned schema download, Actions, releases); quay.io, Docker Hub and Sigstore (the release artifact); Dependabot and Trivy.
+- **Incentives:** no telemetry in the tool (`DO_NOT_TRACK=1` in the workflows), and `06-telemetry.sh` turns the operating system's own telemetry off on the node.
+
+#### B.PRIV Privacy honoured
+
+- **Browser storage:** none (a command-line tool).
+- **What is stored about people:** nothing by the tool. A built seed holds the administrator's password hash, authorised public keys and an optional Ubuntu Pro token; it is private (mode 0600), kept outside the repository and deleted after use (`SECURITY.md`), and `08-hardening.sh` redacts the installer's own copy on the node.
+- **Third-party requests:** `scripts/fetch-subiquity-schema.sh` (the pinned schema and reserved-name list from GitHub's raw file host); on a node, `node-setup` fetches the CRI-O and Kubernetes repository keys and packages, and `apt` talks to the configured mirrors; `ubuntu-pro` commands contact Canonical when a token is attached. No request carries site data.
+- **Logs:** progress messages carry key names, paths and line numbers; secrets are read from files or the environment, never printed, never in argv (`tests/validate-fail.test.sh` checks that the hash and the token never appear in any failure output).
+
+#### B.CONF Configuration and values
+
+- **Configuration surface:** two strict `KEY=value` files per node (`site.env`, `nodes/<name>.env`) with their types, requirements, defaults and secret flags in `schema/*.schema.tsv`; the one environment override is `INSTANCE_ID`; secrets arrive by file path (mode 0600, caller-owned) or environment variable. An unknown key, a duplicate, a malformed line or a wrong type stops the build with the file and line.
+- **Values that can carry a credential:** the two `*_FILE` secret paths (the files hold the credential; the keys are flagged secret), `UBUNTU_PRO_TOKEN` and any free-text value an operator mis-types (F24).
+- **Echo sweep (2026-11-26):** every `np_die`, `np_warn`, `np_info` and `echo` that takes a configured value was read. Held: secret keys are reported as `not a valid <type>` without the value; the secret file checks name the path and the mode, never the content; the validator reports errors by rule and position. **Not held, now fixed:** `np_set` repeated a refused free-text value (F24). Echoed on purpose: the strictly shaped, non-secret values in type errors (host names, addresses, serials), a refused enumeration choice and file paths in not-found messages.
+- **Duplicated literals (B.CONF-3):** the version is in `VERSION` only (the tarball name and the checks read it); the pinned repository fingerprints are in the node scripts and the site keys that override them, which is the documented way to adopt a rotation.
+- **Secrets apart from settings:** nothing secret is stored in site files (only paths to secret files); examples and tests use documentation ranges, `example.invalid` and fixed fixtures.
+
 ---
 
 ## Section A — Invariant verification matrix
@@ -418,3 +474,4 @@ installer's storage handling are proved by the VM matrix (2026-10-22/23); real d
   this log. `WIPE_DATA_DISK` semantics changed (`0|1|force`, `1` never erases a layout this script created): four new container
   scenarios in `tests/data-disk/`. The denylist reader trims CR and blanks and reports its term count.
 - 2026-11-05 — delta review of 0.0.2 (`8d852f5`, 2026-10-23) and the Dependabot `setup-oras` bump (`005458ad…` v2.0.2 → `5e2f2482…` v2.0.3; pinned by SHA with a version comment, no permission or trigger change). Read the preflight change and its tests; ran `bash tests/run.sh` (17 files, 307 checks, 0 failed). New F22 (preflight counted a data-disk label on any disk; RESOLVED in 0.0.2). Corrected the front matter, which still said "unreleased (0.0.1)" after the tags `v0.0.1` and `v0.0.2`. The `docs/configuration.md` LACP/installer-network note is documentation (no finding). Hardware evidence: the production node was installed with this tool on 2026-10-23 (recorded in the workspace's `docs/STATE.md`, which `docs/verification.md` names as the place for hardware runs); no run record lives in this repository, so I claim nothing beyond that. Lens check: A11Y not triggered (no UI); HOST (2026-10-22) and OPS rows unchanged and still current; base re-cited to the 2026-11-01 registry (it gained the A11Y code only). Counts: 21 RESOLVED, 1 ACCEPTED-RISK pending OQ1 (F18, unchanged).
+- 2026-11-26 — Part B documentation pass (`VERSION` 0.0.3 plus unreleased): read every tracked file against the documentation standard and annotated it (63 measured files meet it); corrected two stale statements and removed a dead placeholder scenario (F23); applied the RFC, IOP, PRIV and CONF lenses for the first time (the sections above); fixed F24 (a refused free-text value was echoed), with a test; `bash tests/run.sh` passes (309 checks passed, 0 failed, container suites included).
