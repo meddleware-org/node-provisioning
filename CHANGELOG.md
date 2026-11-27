@@ -6,6 +6,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-11-27
+
 ### Documentation
 
 - Documentation pass (workspace documentation standard): every file has a header and line-level comments, and every function a comment above it.
